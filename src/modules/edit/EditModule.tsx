@@ -93,16 +93,10 @@ export default function EditModule() {
           multiple
           onFiles={(files) => void handlePdfFiles(files)}
           className="bg-base-100 shadow-xl py-16"
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="text-primary"><IconUpload /></div>
-            <p className="font-semibold">Déposez un PDF ici</p>
-            <p className="text-sm text-base-content/60">
-              ou cliquez pour parcourir — le fichier reste dans votre navigateur
-            </p>
-            {busy && <span className="loading loading-spinner text-primary" />}
-          </div>
-        </FileDropzone>
+          title="Déposez un PDF ici"
+          description="Le fichier reste dans votre navigateur"
+          footer={busy && <span className="loading loading-spinner text-primary" />}
+        />
       </div>
     )
   }

@@ -1,5 +1,5 @@
 {
-  "name": "pdf-toolkit",
+  "name": "localpdf",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -13,6 +13,8 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@huggingface/transformers": "^4.2.0",
+    "@mlc-ai/web-llm": "^0.2.84",
     "@pdf-lib/fontkit": "^1.1.1",
     "framer-motion": "^12.42.2",
     "idb": "^8.0.3",

@@ -5,4 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    // Accès via `tailscale serve` (HTTPS requis pour WebGPU hors localhost)
+    allowedHosts: ['.ts.net'],
+  },
 })

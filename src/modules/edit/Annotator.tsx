@@ -4,6 +4,7 @@ import type Konva from 'konva'
 import { useEditStore } from './store'
 import { renderEditPage } from './pageRender'
 import { displaySize, newId, type EditAnnotation, type EditPage, type EditTool } from './types'
+import { ColorWell } from '../../components/ui/ColorWell'
 import {
   IconChevronLeft, IconChevronRight, IconCircleShape, IconGrid, IconHighlighter,
   IconNote, IconPointer, IconSignature, IconSquare, IconStamp, IconTrash, IconType,
@@ -472,19 +473,21 @@ export function Annotator() {
                     updateAnnotation(page.id, selected.id, { fontSize: Number(e.target.value) || 12 })
                   }
                 />
-                <input
-                  type="color" className="w-6 h-6 cursor-pointer rounded"
+                <ColorWell
+                  size="sm"
                   value={selected.color}
-                  onChange={(e) => updateAnnotation(page.id, selected.id, { color: e.target.value })}
+                  onChange={(color) => updateAnnotation(page.id, selected.id, { color })}
+                  title="Couleur du texte"
                 />
               </>
             )}
             {(selected.type === 'rect' || selected.type === 'ellipse' || selected.type === 'ink') && (
               <>
-                <input
-                  type="color" className="w-6 h-6 cursor-pointer rounded"
+                <ColorWell
+                  size="sm"
                   value={selected.stroke}
-                  onChange={(e) => updateAnnotation(page.id, selected.id, { stroke: e.target.value })}
+                  onChange={(stroke) => updateAnnotation(page.id, selected.id, { stroke })}
+                  title="Couleur du trait"
                 />
                 <input
                   type="number" className="input input-xs w-14" min={1} max={20}
@@ -497,26 +500,26 @@ export function Annotator() {
             )}
             {selected.type === 'stamp' && (
               <>
-                <select
-                  className="select select-xs w-36"
-                  value={STAMP_PRESETS.includes(selected.text) ? selected.text : '__custom'}
-                  onChange={(e) => {
-                    if (e.target.value !== '__custom') {
-                      updateAnnotation(page.id, selected.id, { text: e.target.value })
-                    }
-                  }}
-                >
-                  {STAMP_PRESETS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                  {!STAMP_PRESETS.includes(selected.text) && (
-                    <option value="__custom">{selected.text}</option>
-                  )}
-                </select>
+                {/* Combo box : texte libre ou choix parmi les tampons usuels */}
                 <input
-                  type="color" className="w-6 h-6 cursor-pointer rounded"
+                  className="input input-xs w-36"
+                  list="stamp-presets"
+                  value={selected.text}
+                  placeholder="Texte du tampon"
+                  onChange={(e) =>
+                    updateAnnotation(page.id, selected.id, { text: e.target.value })
+                  }
+                />
+                <datalist id="stamp-presets">
+                  {STAMP_PRESETS.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+                <ColorWell
+                  size="sm"
                   value={selected.color}
-                  onChange={(e) => updateAnnotation(page.id, selected.id, { color: e.target.value })}
+                  onChange={(color) => updateAnnotation(page.id, selected.id, { color })}
+                  title="Couleur du tampon"
                 />
               </>
             )}

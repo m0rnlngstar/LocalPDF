@@ -7,6 +7,7 @@ import { IconDownload, IconFilePlus } from '../../components/ui/icons'
 import { buildPdf, downloadBytes } from './exportPdf'
 import { PAGE_FORMATS, type Orientation, type PageFormatId } from './types'
 import { toast } from '../../components/ui/Toast'
+import { SegmentedControl } from '../../components/ui/SegmentedControl'
 
 /** Formulaire de création d'un nouveau document (format + orientation). */
 function NewDocumentForm({ onDone }: { onDone?: () => void }) {
@@ -22,17 +23,15 @@ function NewDocumentForm({ onDone }: { onDone?: () => void }) {
         <h2 className="card-title">📄 Nouveau document</h2>
         <fieldset className="fieldset">
           <legend className="fieldset-legend">Format</legend>
-          <div className="join">
-            {(Object.keys(PAGE_FORMATS) as PageFormatId[]).concat('custom').map((f) => (
-              <button
-                key={f}
-                className={`btn btn-sm join-item ${format === f ? 'btn-primary' : ''}`}
-                onClick={() => setFormat(f)}
-              >
-                {f === 'custom' ? 'Personnalisé' : f}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Format de page"
+            value={format}
+            onChange={setFormat}
+            options={(Object.keys(PAGE_FORMATS) as PageFormatId[]).concat('custom').map((f) => ({
+              value: f,
+              label: f === 'custom' ? 'Personnalisé' : f,
+            }))}
+          />
         </fieldset>
         {format === 'custom' && (
           <div className="flex gap-2 items-center">
@@ -50,20 +49,15 @@ function NewDocumentForm({ onDone }: { onDone?: () => void }) {
         )}
         <fieldset className="fieldset">
           <legend className="fieldset-legend">Orientation</legend>
-          <div className="join">
-            <button
-              className={`btn btn-sm join-item ${orientation === 'portrait' ? 'btn-primary' : ''}`}
-              onClick={() => setOrientation('portrait')}
-            >
-              📄 Portrait
-            </button>
-            <button
-              className={`btn btn-sm join-item ${orientation === 'landscape' ? 'btn-primary' : ''}`}
-              onClick={() => setOrientation('landscape')}
-            >
-              🖼️ Paysage
-            </button>
-          </div>
+          <SegmentedControl
+            ariaLabel="Orientation de la page"
+            value={orientation}
+            onChange={setOrientation}
+            options={[
+              { value: 'portrait', label: '📄 Portrait' },
+              { value: 'landscape', label: '🖼️ Paysage' },
+            ]}
+          />
         </fieldset>
         <div className="card-actions justify-end mt-2">
           <button

@@ -15,7 +15,7 @@ import { openPdf } from '../../lib/pdfjs'
 import { downloadBytes } from '../create/exportPdf'
 import { FileDropzone } from '../../components/ui/FileDropzone'
 import { toast } from '../../components/ui/Toast'
-import { IconDownload, IconImage, IconPlus, IconUpload, IconX } from '../../components/ui/icons'
+import { IconDownload, IconImage, IconPlus, IconX } from '../../components/ui/icons'
 
 /** Miniature de la première page d'un PDF (cache module pour éviter les re-rendus). */
 const thumbCache = new Map<string, Promise<string>>()
@@ -270,16 +270,10 @@ export default function MergeModule() {
           multiple
           onFiles={(files) => void handleFiles(files)}
           className="bg-base-100 shadow-xl py-16"
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="text-primary"><IconUpload /></div>
-            <p className="font-semibold">Déposez des PDF et des images ici</p>
-            <p className="text-sm text-base-content/60">
-              Ils seront fusionnés en un seul PDF, dans l'ordre de votre choix
-            </p>
-            {busy && <span className="loading loading-spinner text-primary" />}
-          </div>
-        </FileDropzone>
+          title="Déposez des PDF et des images ici"
+          description="Ils seront fusionnés en un seul PDF, dans l'ordre de votre choix"
+          footer={busy && <span className="loading loading-spinner text-primary" />}
+        />
       </div>
     )
   }

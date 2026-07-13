@@ -6,12 +6,15 @@ import { ToastContainer } from './components/ui/Toast'
 
 // Chaque module est chargé en lazy : on ne paie pdf.js/tesseract qu'à l'usage.
 const moduleComponents: Record<ModuleId, React.LazyExoticComponent<React.ComponentType>> = {
+  home: lazy(() => import('./modules/home/Dashboard')),
+  docchat: lazy(() => import('./modules/docchat/DocChatModule')),
   create: lazy(() => import('./modules/create/CreateModule')),
   edit: lazy(() => import('./modules/edit/EditModule')),
   merge: lazy(() => import('./modules/merge/MergeModule')),
   split: lazy(() => import('./modules/split/SplitModule')),
   'smart-split': lazy(() => import('./modules/smart-split/SmartSplitModule')),
   ocr: lazy(() => import('./modules/ocr/OcrModule')),
+  facturx: lazy(() => import('./modules/facturx/FacturXModule')),
 }
 
 function LocalBadge() {
@@ -86,7 +89,7 @@ export default function App() {
         <aside className="bg-base-200 min-h-full w-64 flex flex-col">
           <div className="p-4 pb-2">
             <h1 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              PDF Toolkit
+              LocalPDF
             </h1>
             <p className="text-xs text-base-content/60 mt-1">
               Vos fichiers ne quittent jamais votre navigateur.

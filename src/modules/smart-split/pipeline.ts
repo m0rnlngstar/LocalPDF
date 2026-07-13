@@ -1,6 +1,6 @@
 import { openPdf } from '../../lib/pdfjs'
 import { recognizeCanvas } from '../../lib/ocr'
-import { verifySplitBoundary } from './hooks'
+import { getSplitVerifier } from './hooks'
 
 /**
  * Pipeline d'analyse du Splitteur intelligent.
@@ -27,21 +27,32 @@ export interface SmartSplitConfig {
   visualThreshold: number
   /** Retirer les pages blanches des fichiers exportés. */
   excludeBlank: boolean
+  /** Vérifier chaque coupure proposée avec le LLM local (WebGPU). */
+  useLlm: boolean
+  /** Identifiant du modèle WebLLM à utiliser. */
+  llmModel: string
 }
 
 export const DEFAULT_CONFIG: SmartSplitConfig = {
-  patterns: ['Facture\\s+n[°o]', 'Invoice\\s+#?\\d'],
+  patterns: ['Facture\\s+n[°o]', 'Num[ée]ro de facture', 'Invoice\\s+#?\\d'],
   usePatterns: true,
   useBlank: true,
   blankInkPct: 0.1,
   useVisual: false,
   visualThreshold: 24,
   excludeBlank: true,
+  useLlm: false,
+  llmModel: 'onnx-community/gemma-4-E2B-it-ONNX',
 }
 
 export interface PageAnalysis {
   index: number
   thumb: string
+  /**
+   * Rendu ~700 px (JPEG, data URL) pour le vérificateur LLM multimodal —
+   * assez grand pour lire les en-têtes. Vide quand le LLM est désactivé.
+   */
+  render: string
   text: string
   inkRatio: number
   isBlank: boolean
@@ -62,6 +73,23 @@ export interface AnalysisProgress {
   totalPages: number
   phase: 'render' | 'analyse' | 'ocr' | 'verify'
   pct: number
+}
+
+/** Bilan de la passe LLM, pour que l'UI montre ce que l'IA a réellement fait. */
+export interface LlmReport {
+  /** Frontières effectivement soumises au modèle. */
+  examined: number
+  confirmed: number
+  removed: number
+  added: number
+  /** Message d'erreur si le moteur a lâché en cours de passe. */
+  failed: string | null
+}
+
+export interface CutsResult {
+  cuts: CutInfo[]
+  /** null si la vérification IA n'était pas active. */
+  llm: LlmReport | null
 }
 
 /**
@@ -151,12 +179,35 @@ export async function analyzeDocument(
     const isBlank = inkRatio * 100 < config.blankInkPct
     const phash = computePhash(small)
 
+    // Rendu intermédiaire pour le vérificateur multimodal (Gemma 4) : les
+    // miniatures 160 px sont illisibles pour un modèle de vision.
+    let render = ''
+    if (config.useLlm) {
+      const mid = document.createElement('canvas')
+      const mScale = Math.min(700 / canvas.width, 1)
+      mid.width = Math.round(canvas.width * mScale)
+      mid.height = Math.round(canvas.height * mScale)
+      mid.getContext('2d')!.drawImage(canvas, 0, 0, mid.width, mid.height)
+      render = mid.toDataURL('image/jpeg', 0.8)
+    }
+
+    // Texte de la page : couche texte embarquée d'abord (PDF numériques —
+    // fiable et instantané), OCR seulement si elle est vide ou squelettique
+    // (scans, ou pages composées d'images).
     let text = ''
     if (!isBlank) {
-      const { text: t } = await recognizeCanvas(canvas, (pct) =>
-        onProgress({ page: i, totalPages: pdf.numPages, phase: 'ocr', pct })
-      )
-      text = t
+      const content = await page.getTextContent()
+      text = content.items
+        .map((it) => ('str' in it ? it.str : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (text.length < 50) {
+        const { text: t } = await recognizeCanvas(canvas, (pct) =>
+          onProgress({ page: i, totalPages: pdf.numPages, phase: 'ocr', pct })
+        )
+        text = t
+      }
     }
 
     const matchedPattern = regexes.find((r) => r.test(text))?.source ?? null
@@ -164,6 +215,7 @@ export async function analyzeDocument(
     pages.push({
       index: i - 1,
       thumb: small.toDataURL(),
+      render,
       text,
       inkRatio,
       isBlank,
@@ -179,7 +231,7 @@ export async function proposeCuts(
   pages: PageAnalysis[],
   config: SmartSplitConfig,
   onProgress?: (p: AnalysisProgress) => void
-): Promise<CutInfo[]> {
+): Promise<CutsResult> {
   const cuts = new Map<number, string[]>()
 
   function addReason(before: number, reason: string) {
@@ -206,22 +258,58 @@ export async function proposeCuts(
     }
   }
 
-  // Vérification LLM optionnelle (point d'extension, non branché par défaut)
+  // Passe LLM optionnelle (réglages avancés) : chaque frontière entre deux
+  // pages non blanches est examinée — les coupures proposées peuvent être
+  // confirmées ou retirées, et le modèle peut AJOUTER une coupure que les
+  // heuristiques ont manquée (uniquement sur un verdict net, jamais 'unsure').
+  const verifySplitBoundary = getSplitVerifier()
+  let llm: LlmReport | null = null
   if (verifySplitBoundary) {
-    for (const [before, reasons] of [...cuts.entries()]) {
-      onProgress?.({ page: before, totalPages: pages.length, phase: 'verify', pct: 0 })
-      const ok = await verifySplitBoundary(
-        { index: before - 1, text: pages[before - 1].text, thumb: pages[before - 1].thumb },
-        { index: before, text: pages[before].text, thumb: pages[before].thumb }
-      )
-      if (!ok) cuts.delete(before)
-      else reasons.push('Confirmé par LLM')
+    llm = { examined: 0, confirmed: 0, removed: 0, added: 0, failed: null }
+    const boundaries: number[] = []
+    for (let i = 1; i < pages.length; i++) {
+      if (cuts.has(i) || (!pages[i - 1].isBlank && !pages[i].isBlank)) boundaries.push(i)
+    }
+    let done = 0
+    for (const before of boundaries) {
+      onProgress?.({
+        page: before,
+        totalPages: pages.length,
+        phase: 'verify',
+        pct: done++ / boundaries.length,
+      })
+      try {
+        const verdict = await verifySplitBoundary(
+          { index: before - 1, text: pages[before - 1].text, image: pages[before - 1].render },
+          { index: before, text: pages[before].text, image: pages[before].render }
+        )
+        llm.examined++
+        if (cuts.has(before)) {
+          if (verdict === 'continue') {
+            cuts.delete(before)
+            llm.removed++
+          } else if (verdict === 'new') {
+            cuts.get(before)!.push('Confirmé par IA')
+            llm.confirmed++
+          }
+        } else if (verdict === 'new') {
+          addReason(before, 'Détecté par IA')
+          llm.added++
+        }
+      } catch (err) {
+        // Moteur indisponible : coupures conservées telles quelles, et on
+        // n'insiste pas sur les frontières suivantes.
+        console.warn('Vérification LLM indisponible :', err)
+        llm.failed = err instanceof Error ? err.message : String(err)
+        break
+      }
     }
   }
 
-  return [...cuts.entries()]
+  const list = [...cuts.entries()]
     .sort(([a], [b]) => a - b)
     .map(([beforePage, reasons]) => ({ beforePage, reasons, manual: false }))
+  return { cuts: list, llm }
 }
 
 /** Construit les segments finaux à partir des coupures validées. */

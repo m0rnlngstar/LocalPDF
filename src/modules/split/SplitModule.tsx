@@ -3,7 +3,7 @@ import { openPdf } from '../../lib/pdfjs'
 import { exportSegments, parseRanges, type Segment } from './splitExport'
 import { FileDropzone } from '../../components/ui/FileDropzone'
 import { toast } from '../../components/ui/Toast'
-import { IconDownload, IconUpload, IconX } from '../../components/ui/icons'
+import { IconDownload, IconX } from '../../components/ui/icons'
 
 /**
  * Éclateur : découpe un PDF en plusieurs fichiers.
@@ -130,16 +130,10 @@ export default function SplitModule() {
           accept="application/pdf"
           onFiles={(files) => void handleFiles(files)}
           className="bg-base-100 shadow-xl py-16"
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="text-primary"><IconUpload /></div>
-            <p className="font-semibold">Déposez le PDF à découper</p>
-            <p className="text-sm text-base-content/60">
-              Par plages de pages ou une page par fichier — tout reste dans votre navigateur
-            </p>
-            {busy && <span className="loading loading-spinner text-primary" />}
-          </div>
-        </FileDropzone>
+          title="Déposez le PDF à découper"
+          description="Par plages de pages ou une page par fichier — tout reste dans votre navigateur"
+          footer={busy && <span className="loading loading-spinner text-primary" />}
+        />
       </div>
     )
   }

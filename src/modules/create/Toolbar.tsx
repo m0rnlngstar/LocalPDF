@@ -3,6 +3,8 @@ import { FONTS, FONT_FAMILIES, type FontFamily } from '../../lib/fonts'
 import { useCreateStore } from './store'
 import { newId, type Watermark } from './types'
 import { toast } from '../../components/ui/Toast'
+import { SegmentedButtons, SegmentedControl } from '../../components/ui/SegmentedControl'
+import { ColorWell } from '../../components/ui/ColorWell'
 import {
   IconAlignCenter, IconAlignLeft, IconAlignRight, IconArrow, IconBold,
   IconChevronDown, IconChevronUp, IconChevronsDown, IconChevronsUp,
@@ -182,15 +184,12 @@ function WatermarkDialog({
                 onChange={(e) => setFontSize(Number(e.target.value) || 60)}
               />
             </label>
-            <input
-              type="color" value={color} title="Couleur"
-              className="w-9 h-9 cursor-pointer rounded-lg"
-              onChange={(e) => setColor(e.target.value)}
-            />
+            <ColorWell value={color} onChange={setColor} title="Couleur du filigrane" />
+            {/* Valeur de formulaire (appliquée au clic sur « Appliquer ») → checkbox */}
             <label className="label cursor-pointer gap-2 ml-auto">
               <span className="label-text text-sm">Diagonale</span>
               <input
-                type="checkbox" className="toggle toggle-sm toggle-primary"
+                type="checkbox" className="checkbox checkbox-sm checkbox-primary"
                 checked={diagonal} onChange={(e) => setDiagonal(e.target.checked)}
               />
             </label>
@@ -271,86 +270,80 @@ export function SelectionBar() {
                 <option key={f} value={f}>{f}</option>
               ))}
             </select>
+            {/* Combo box : saisie libre + tailles usuelles en suggestions */}
             <input
               type="number"
               className="input input-sm w-16"
               min={6}
               max={144}
+              list="create-font-sizes"
               value={selected.fontSize}
               onChange={(e) =>
                 updateElement(selected.id, { fontSize: Number(e.target.value) || 12 })
               }
               title="Taille de police"
             />
-            <input
-              type="color"
-              className="w-7 h-7 cursor-pointer rounded"
+            <datalist id="create-font-sizes">
+              {[8, 10, 12, 14, 16, 18, 24, 36, 48, 72].map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+            <ColorWell
               value={selected.color}
-              onChange={(e) => updateElement(selected.id, { color: e.target.value })}
+              onChange={(color) => updateElement(selected.id, { color })}
               title="Couleur du texte"
             />
-            <div className="join">
-              <button
-                className={`btn btn-sm btn-square join-item ${selected.bold ? 'btn-active' : ''}`}
-                title="Gras"
-                disabled={!FONTS[selected.fontFamily].hasBold}
-                onClick={() => updateElement(selected.id, { bold: !selected.bold })}
-              >
-                <IconBold />
-              </button>
-              <button
-                className={`btn btn-sm btn-square join-item ${selected.italic ? 'btn-active' : ''}`}
-                title="Italique"
-                disabled={!FONTS[selected.fontFamily].hasItalic}
-                onClick={() => updateElement(selected.id, { italic: !selected.italic })}
-              >
-                <IconItalic />
-              </button>
-            </div>
-            <div className="join">
-              {(
-                [
-                  ['left', 'Aligner à gauche', <IconAlignLeft key="l" />],
-                  ['center', 'Centrer', <IconAlignCenter key="c" />],
-                  ['right', 'Aligner à droite', <IconAlignRight key="r" />],
-                ] as const
-              ).map(([a, label, icon]) => (
-                <button
-                  key={a}
-                  className={`btn btn-sm btn-square join-item ${selected.align === a ? 'btn-active' : ''}`}
-                  title={label}
-                  onClick={() => updateElement(selected.id, { align: a })}
-                >
-                  {icon}
-                </button>
-              ))}
-            </div>
+            <SegmentedButtons
+              ariaLabel="Style de texte"
+              items={[
+                {
+                  key: 'bold', label: <IconBold />, title: 'Gras',
+                  pressed: selected.bold,
+                  disabled: !FONTS[selected.fontFamily].hasBold,
+                  onClick: () => updateElement(selected.id, { bold: !selected.bold }),
+                },
+                {
+                  key: 'italic', label: <IconItalic />, title: 'Italique',
+                  pressed: selected.italic,
+                  disabled: !FONTS[selected.fontFamily].hasItalic,
+                  onClick: () => updateElement(selected.id, { italic: !selected.italic }),
+                },
+              ]}
+            />
+            <SegmentedControl
+              ariaLabel="Alignement du texte"
+              value={selected.align}
+              onChange={(align) => updateElement(selected.id, { align })}
+              options={[
+                { value: 'left', label: <IconAlignLeft />, title: 'Aligner à gauche' },
+                { value: 'center', label: <IconAlignCenter />, title: 'Centrer' },
+                { value: 'right', label: <IconAlignRight />, title: 'Aligner à droite' },
+              ]}
+            />
           </>
         )}
 
         {(selected.type === 'rect' || selected.type === 'ellipse') && (
-          <label className="flex items-center gap-1.5 text-xs">
+          <span className="flex items-center gap-1.5 text-xs">
             Fond
-            <input
-              type="color"
-              className="w-7 h-7 cursor-pointer rounded"
+            <ColorWell
               value={selected.fill}
-              onChange={(e) => updateElement(selected.id, { fill: e.target.value })}
+              onChange={(fill) => updateElement(selected.id, { fill })}
+              title="Couleur de fond"
             />
-          </label>
+          </span>
         )}
         {(selected.type === 'rect' || selected.type === 'ellipse' ||
           selected.type === 'line' || selected.type === 'arrow') && (
           <>
-            <label className="flex items-center gap-1.5 text-xs">
+            <span className="flex items-center gap-1.5 text-xs">
               Trait
-              <input
-                type="color"
-                className="w-7 h-7 cursor-pointer rounded"
+              <ColorWell
                 value={selected.stroke}
-                onChange={(e) => updateElement(selected.id, { stroke: e.target.value })}
+                onChange={(stroke) => updateElement(selected.id, { stroke })}
+                title="Couleur du trait"
               />
-            </label>
+            </span>
             <input
               type="number"
               className="input input-sm w-16"
@@ -365,13 +358,17 @@ export function SelectionBar() {
           </>
         )}
 
-        {/* Ordre des calques + suppression, communs à tous les types */}
-        <div className="join ml-auto">
-          <button className="btn btn-sm btn-square join-item" title="Tout en arrière" onClick={() => moveZ(selected.id, 'back')}><IconChevronsDown /></button>
-          <button className="btn btn-sm btn-square join-item" title="Reculer" onClick={() => moveZ(selected.id, 'down')}><IconChevronDown /></button>
-          <button className="btn btn-sm btn-square join-item" title="Avancer" onClick={() => moveZ(selected.id, 'up')}><IconChevronUp /></button>
-          <button className="btn btn-sm btn-square join-item" title="Tout devant" onClick={() => moveZ(selected.id, 'front')}><IconChevronsUp /></button>
-        </div>
+        {/* Ordre des calques (actions momentanées) + suppression, communs à tous les types */}
+        <SegmentedButtons
+          ariaLabel="Ordre des calques"
+          className="ml-auto"
+          items={[
+            { key: 'back', label: <IconChevronsDown />, title: 'Tout en arrière', onClick: () => moveZ(selected.id, 'back') },
+            { key: 'down', label: <IconChevronDown />, title: 'Reculer', onClick: () => moveZ(selected.id, 'down') },
+            { key: 'up', label: <IconChevronUp />, title: 'Avancer', onClick: () => moveZ(selected.id, 'up') },
+            { key: 'front', label: <IconChevronsUp />, title: 'Tout devant', onClick: () => moveZ(selected.id, 'front') },
+          ]}
+        />
         <button
           className="btn btn-sm btn-square btn-error btn-soft"
           title="Supprimer l'élément"

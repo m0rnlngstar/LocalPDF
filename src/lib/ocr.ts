@@ -23,19 +23,61 @@ export interface OcrResult {
   words: OcrWord[]
 }
 
+/**
+ * Deux jeux de modèles sont embarqués : `fast` (léger, ~2,5 Mo, chargé par
+ * défaut) et `best` (float LSTM, ~16 Mo, nettement plus précis sur les
+ * scans/photos difficiles). Chaque jeu a son propre cachePath IndexedDB.
+ */
+export type OcrQuality = 'fast' | 'best'
+
+const QUALITY_KEY = 'ocr-quality'
+let currentQuality: OcrQuality =
+  localStorage.getItem(QUALITY_KEY) === 'best' ? 'best' : 'fast'
+
 let workerPromise: Promise<Worker> | null = null
 /** Callback de progression de la reconnaissance EN COURS (0..1). */
 let currentProgress: ((p: number) => void) | null = null
 
+export function getOcrQuality(): OcrQuality {
+  return currentQuality
+}
+
+/** Change de jeu de modèles ; le worker sera recréé au prochain usage. */
+export function setOcrQuality(quality: OcrQuality) {
+  if (quality === currentQuality) return
+  currentQuality = quality
+  localStorage.setItem(QUALITY_KEY, quality)
+  const old = workerPromise
+  workerPromise = null
+  void old?.then((w) => w.terminate()).catch(() => {})
+}
+
 function getWorker(): Promise<Worker> {
-  workerPromise ??= createWorker(['fra', 'eng'], 1, {
-    workerPath: '/tesseract/worker.min.js',
-    corePath: '/tesseract/core',
-    langPath: '/tessdata',
-    logger: (m) => {
-      if (m.status === 'recognizing text') currentProgress?.(m.progress)
-    },
-  })
+  workerPromise ??= (async () => {
+    const dataDir = currentQuality === 'best' ? '/tessdata-best' : '/tessdata'
+    const worker = await createWorker(['fra', 'eng'], 1, {
+      workerPath: '/tesseract/worker.min.js',
+      // Les modèles best (float) exigent le cœur complet ET la variante simd :
+      // les cœurs « -lstm » n'embarquent pas les fonctions float, et les builds
+      // « relaxedsimd » (choisis en priorité par tesseract.js sur Chrome)
+      // référencent DotProductSSE sans l'implémenter → abort au chargement.
+      corePath:
+        currentQuality === 'best'
+          ? '/tesseract/core/tesseract-core-simd.wasm.js'
+          : '/tesseract/core',
+      langPath: dataDir,
+      cachePath: dataDir,
+      legacyCore: currentQuality === 'best',
+      legacyLang: currentQuality === 'best',
+      logger: (m) => {
+        if (m.status === 'recognizing text') currentProgress?.(m.progress)
+      },
+    })
+    // Les images/canvas n'ont pas de DPI : sans cette valeur, tesseract
+    // le devine (mal) et dégrade sa segmentation.
+    await worker.setParameters({ user_defined_dpi: '300' })
+    return worker
+  })()
   return workerPromise
 }
 
