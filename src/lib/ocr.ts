@@ -54,17 +54,19 @@ export function setOcrQuality(quality: OcrQuality) {
 
 function getWorker(): Promise<Worker> {
   workerPromise ??= (async () => {
-    const dataDir = currentQuality === 'best' ? '/tessdata-best' : '/tessdata'
+    // BASE_URL : l'app peut être servie sous un sous-chemin (GitHub Pages)
+    const base = import.meta.env.BASE_URL
+    const dataDir = base + (currentQuality === 'best' ? 'tessdata-best' : 'tessdata')
     const worker = await createWorker(['fra', 'eng'], 1, {
-      workerPath: '/tesseract/worker.min.js',
+      workerPath: `${base}tesseract/worker.min.js`,
       // Les modèles best (float) exigent le cœur complet ET la variante simd :
       // les cœurs « -lstm » n'embarquent pas les fonctions float, et les builds
       // « relaxedsimd » (choisis en priorité par tesseract.js sur Chrome)
       // référencent DotProductSSE sans l'implémenter → abort au chargement.
       corePath:
         currentQuality === 'best'
-          ? '/tesseract/core/tesseract-core-simd.wasm.js'
-          : '/tesseract/core',
+          ? `${base}tesseract/core/tesseract-core-simd.wasm.js`
+          : `${base}tesseract/core`,
       langPath: dataDir,
       cachePath: dataDir,
       legacyCore: currentQuality === 'best',
