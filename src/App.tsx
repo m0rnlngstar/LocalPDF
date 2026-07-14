@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { MODULES, useAppStore, type ModuleId } from './store/appStore'
 import { ThemeController } from './components/ui/ThemeController'
 import { ToastContainer } from './components/ui/Toast'
+import { BrandMark, ModuleIcon } from './components/ui/ModuleIcon'
 
 // Chaque module est chargé en lazy : on ne paie pdf.js/tesseract qu'à l'usage.
 const moduleComponents: Record<ModuleId, React.LazyExoticComponent<React.ComponentType>> = {
@@ -20,10 +21,31 @@ const moduleComponents: Record<ModuleId, React.LazyExoticComponent<React.Compone
 function LocalBadge() {
   return (
     <div
-      className="badge badge-success badge-soft gap-1 whitespace-nowrap rounded-full shrink-0"
+      className="local-badge"
       title="Aucun fichier n'est jamais envoyé sur un serveur : tout le traitement se fait dans votre navigateur."
     >
-      🔒 100% local
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <rect x="5" y="10" width="14" height="10" rx="3" />
+        <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" />
+        <path d="m10 15 1.5 1.5L14.5 13" />
+      </svg>
+      <span><strong>Privé</strong> · 100 % local</span>
+    </div>
+  )
+}
+
+const NAV_GROUPS: { label: string; modules: ModuleId[] }[] = [
+  { label: 'Espace de travail', modules: ['home'] },
+  { label: 'Créer et organiser', modules: ['create', 'edit', 'merge', 'split'] },
+  { label: 'Comprendre et contrôler', modules: ['ocr', 'smart-split', 'docchat', 'facturx'] },
+]
+
+function LoadingModule() {
+  return (
+    <div className="module-loading" role="status" aria-label="Chargement de l’outil">
+      <div className="skeleton h-8 w-52" />
+      <div className="skeleton h-4 w-80 max-w-full" />
+      <div className="skeleton h-52 w-full mt-5" />
     </div>
   )
 }
@@ -33,33 +55,45 @@ export default function App() {
   const Active = moduleComponents[activeModule]
   const activeMeta = MODULES.find((m) => m.id === activeModule)!
 
+  useEffect(() => {
+    document.title = activeModule === 'home'
+      ? 'LocalPDF — vos PDF restent privés'
+      : `${activeMeta.label} · LocalPDF`
+  }, [activeMeta.label, activeModule])
+
   return (
-    <div className="drawer lg:drawer-open min-h-screen">
+    <div className="drawer lg:drawer-open min-h-screen app-shell">
       <input id="nav-drawer" type="checkbox" className="drawer-toggle" />
 
+      <a href="#main-content" className="skip-link">Aller au contenu</a>
+
       <div className="drawer-content flex flex-col min-h-screen">
-        {/* Barre supérieure */}
-        <header className="navbar bg-base-100/80 backdrop-blur border-b border-base-300/50 sticky top-0 z-40 min-h-12">
+        <header className="app-header sticky top-0 z-40">
           <div className="flex-none lg:hidden">
-            <label htmlFor="nav-drawer" aria-label="Ouvrir le menu" className="btn btn-square btn-ghost btn-sm">
+            <label htmlFor="nav-drawer" aria-label="Ouvrir le menu" className="btn btn-square btn-ghost btn-sm app-menu-button">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
               </svg>
             </label>
           </div>
-          <div className="flex-1 flex items-center gap-3 px-2 min-w-0">
-            <span className="text-lg font-semibold truncate">
-              {activeMeta.icon} {activeMeta.label}
-            </span>
-            <LocalBadge />
+          <div className="flex-1 flex items-center gap-3 min-w-0">
+            <BrandMark className="lg:hidden" />
+            <div className="min-w-0">
+              <div className="app-breadcrumb hidden sm:flex">
+                <span>LocalPDF</span>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+                <span>{activeMeta.category}</span>
+              </div>
+              <h2 className="app-page-title truncate">{activeMeta.label}</h2>
+            </div>
           </div>
-          <div className="flex-none">
+          <div className="flex-none flex items-center gap-2 sm:gap-3">
+            <div className="hidden md:block"><LocalBadge /></div>
             <ThemeController />
           </div>
         </header>
 
-        {/* Contenu du module actif, avec transition animée */}
-        <main className="flex-1 p-3 sm:p-5 overflow-x-hidden bg-base-200/40">
+        <main id="main-content" className="flex-1 overflow-x-hidden app-main-surface">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule}
@@ -67,15 +101,9 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.18 }}
-              className="h-full"
+              className="h-full module-surface"
             >
-              <Suspense
-                fallback={
-                  <div className="flex justify-center items-center h-64">
-                    <span className="loading loading-spinner loading-lg text-primary" />
-                  </div>
-                }
-              >
+              <Suspense fallback={<LoadingModule />}>
                 <Active />
               </Suspense>
             </motion.div>
@@ -83,36 +111,59 @@ export default function App() {
         </main>
       </div>
 
-      {/* Menu latéral */}
       <div className="drawer-side z-50">
         <label htmlFor="nav-drawer" aria-label="Fermer le menu" className="drawer-overlay" />
-        <aside className="bg-base-200 min-h-full w-64 flex flex-col">
-          <div className="p-4 pb-2">
-            <h1 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              LocalPDF
-            </h1>
-            <p className="text-xs text-base-content/60 mt-1">
-              Vos fichiers ne quittent jamais votre navigateur.
-            </p>
+        <aside className="app-sidebar min-h-full w-[17.5rem] flex flex-col">
+          <div className="brand-lockup">
+            <BrandMark />
+            <div>
+              <h1>LocalPDF</h1>
+              <p>L’atelier PDF privé</p>
+            </div>
           </div>
-          <ul className="menu w-full flex-1 gap-1 px-3">
-            {MODULES.map((m) => (
-              <li key={m.id}>
-                <button
-                  className={`rounded-xl transition-colors ${activeModule === m.id ? 'menu-active' : ''}`}
-                  onClick={() => {
-                    setActiveModule(m.id)
-                    const drawer = document.getElementById('nav-drawer') as HTMLInputElement | null
-                    if (drawer) drawer.checked = false
-                  }}
-                >
-                  <span className="text-base">{m.icon}</span> {m.label}
-                </button>
-              </li>
+
+          <nav aria-label="Navigation principale" className="app-nav">
+            {NAV_GROUPS.map((group) => (
+              <div className="nav-group" key={group.label}>
+                <p className="nav-group-label">{group.label}</p>
+                <ul>
+                  {group.modules.map((id) => {
+                    const m = MODULES.find((item) => item.id === id)!
+                    const isActive = activeModule === m.id
+                    return (
+                      <li key={m.id}>
+                        <button
+                          className={`nav-item ${isActive ? 'is-active' : ''}`}
+                          aria-current={isActive ? 'page' : undefined}
+                          onClick={() => {
+                            setActiveModule(m.id)
+                            const drawer = document.getElementById('nav-drawer') as HTMLInputElement | null
+                            if (drawer) drawer.checked = false
+                          }}
+                        >
+                          <span className={`nav-icon tone-${m.tone}`}><ModuleIcon module={m.id} /></span>
+                          <span>{m.label}</span>
+                          {m.badge === 'IA locale' && <span className="nav-ai-dot" title="Fonction IA locale" />}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             ))}
-          </ul>
-          <div className="p-4">
-            <LocalBadge />
+          </nav>
+
+          <div className="sidebar-privacy">
+            <div className="privacy-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path d="M12 3 20 6v5c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6Z" />
+                <path d="m8.5 12 2.2 2.2 4.8-5" />
+              </svg>
+            </div>
+            <div>
+              <strong>Vos fichiers restent ici</strong>
+              <p>Aucun transfert vers un serveur.</p>
+            </div>
           </div>
         </aside>
       </div>

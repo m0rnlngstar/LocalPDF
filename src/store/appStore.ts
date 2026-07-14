@@ -4,38 +4,52 @@ export type ModuleId =
   | 'home' | 'create' | 'edit' | 'merge' | 'split'
   | 'smart-split' | 'ocr' | 'facturx' | 'docchat'
 
-export const MODULES: { id: ModuleId; label: string; icon: string; desc: string }[] = [
-  { id: 'home', label: 'Accueil', icon: '🏠', desc: 'Tableau de bord des outils' },
+export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
+
+export interface ModuleMeta {
+  id: ModuleId
+  label: string
+  desc: string
+  category: 'Créer' | 'Organiser' | 'Analyser' | 'IA locale' | 'Général'
+  tone: ModuleTone
+  badge?: string
+}
+
+export const MODULES: ModuleMeta[] = [
   {
-    id: 'create', label: 'Créateur PDF', icon: '📄',
+    id: 'home', label: 'Accueil', category: 'Général', tone: 'violet',
+    desc: 'Retrouvez tous vos outils PDF',
+  },
+  {
+    id: 'create', label: 'Créateur PDF', category: 'Créer', tone: 'violet',
     desc: 'Créez un PDF de zéro : texte, images, formes, filigrane, multi-pages.',
   },
   {
-    id: 'edit', label: 'Éditeur / Annotateur', icon: '✏️',
+    id: 'edit', label: 'Éditeur / Annotateur', category: 'Créer', tone: 'blue', badge: 'Populaire',
     desc: 'Réorganisez les pages, surlignez, tamponnez, signez et annotez un PDF existant.',
   },
   {
-    id: 'merge', label: 'Fusionneur', icon: '🔗',
+    id: 'merge', label: 'Fusionner des PDF', category: 'Organiser', tone: 'cyan',
     desc: 'Assemblez plusieurs PDF et images en un seul document, dans l’ordre voulu.',
   },
   {
-    id: 'split', label: 'Éclateur', icon: '✂️',
+    id: 'split', label: 'Découper un PDF', category: 'Organiser', tone: 'emerald',
     desc: 'Découpez un PDF par plages de pages, ou une page par fichier.',
   },
   {
-    id: 'smart-split', label: 'Splitteur intelligent', icon: '🧠',
+    id: 'smart-split', label: 'Découpage intelligent', category: 'IA locale', tone: 'violet', badge: 'IA locale',
     desc: 'Retrouvez les documents individuels d’un scan en vrac : OCR, motifs, pages blanches et IA locale.',
   },
   {
-    id: 'ocr', label: 'OCR', icon: '🔍',
+    id: 'ocr', label: 'Reconnaissance OCR', category: 'Analyser', tone: 'amber',
     desc: 'Extrayez le texte d’un scan ou d’une photo, et exportez un PDF cherchable.',
   },
   {
-    id: 'facturx', label: 'Vérificateur Factur-X', icon: '🧾',
+    id: 'facturx', label: 'Vérifier Factur-X', category: 'Analyser', tone: 'rose', badge: 'Conformité',
     desc: 'Contrôlez la conformité d’une facture électronique et lisez ses données embarquées.',
   },
   {
-    id: 'docchat', label: 'Interroger un document', icon: '💬',
+    id: 'docchat', label: 'Interroger un document', category: 'IA locale', tone: 'blue', badge: 'IA locale',
     desc: 'Posez vos questions sur un PDF à une IA 100 % locale — rien ne quitte votre machine.',
   },
 ]

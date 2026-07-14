@@ -48,9 +48,7 @@ export function FileDropzone({
   return (
     <section
       aria-labelledby={titleId}
-      className={`border-2 border-dashed rounded-box p-8 text-center cursor-pointer transition-colors ${
-        dragOver ? 'border-primary bg-primary/10' : 'border-base-300 hover:border-primary/50'
-      } ${className}`}
+      className={`file-dropzone ${dragOver ? 'is-dragging' : ''} ${className}`}
       onClick={() => inputRef.current?.click()}
       onDragOver={(e) => {
         e.preventDefault()
@@ -74,27 +72,31 @@ export function FileDropzone({
           e.target.value = ''
         }}
       />
-      <div className="flex flex-col items-center gap-3">
+      <span className="dropzone-glow" aria-hidden="true" />
+      <div className="dropzone-content">
         <div
           aria-hidden="true"
-          className="grid place-items-center w-12 h-12 rounded-full bg-primary/10 text-primary"
+          className="dropzone-icon"
         >
           {icon}
         </div>
-        <p id={titleId} className="font-semibold">{title}</p>
-        {description && <p className="text-sm text-base-content/60">{description}</p>}
+        <div>
+          <p id={titleId} className="dropzone-title">{title}</p>
+          {description && <p className="dropzone-description">{description}</p>}
+        </div>
         <button
           type="button"
-          className="btn btn-primary btn-sm rounded-full px-5 mt-1"
+          className="btn btn-primary dropzone-action"
           onClick={(e) => {
             e.stopPropagation()
             inputRef.current?.click()
           }}
         >
+          <IconUpload />
           {actionLabel ?? (multiple ? 'Choisir des fichiers' : 'Choisir un fichier')}
         </button>
-        <p className="text-xs text-base-content/40">…ou glissez-déposez ici</p>
-        {footer}
+        <p className="dropzone-hint"><span /> ou glissez-déposez ici <span /></p>
+        {footer && <div className="dropzone-footer">{footer}</div>}
       </div>
     </section>
   )
