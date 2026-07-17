@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type ModuleId =
-  | 'home' | 'create' | 'edit' | 'merge' | 'split'
+  | 'home' | 'scanner' | 'create' | 'edit' | 'merge' | 'split'
   | 'smart-split' | 'ocr' | 'facturx' | 'docchat'
 
 export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
@@ -19,6 +19,10 @@ export const MODULES: ModuleMeta[] = [
   {
     id: 'home', label: 'Accueil', category: 'Général', tone: 'violet',
     desc: 'Retrouvez tous vos outils PDF',
+  },
+  {
+    id: 'scanner', label: 'Scanner un document', category: 'Créer', tone: 'emerald', badge: 'Nouveau',
+    desc: 'Photographiez plusieurs pages, améliorez-les et créez un PDF recherchable avec OCR local.',
   },
   {
     id: 'create', label: 'Créateur PDF', category: 'Créer', tone: 'violet',

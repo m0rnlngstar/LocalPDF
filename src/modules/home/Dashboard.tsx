@@ -40,9 +40,9 @@ export default function Dashboard() {
             Même l’OCR et l’IA s’exécutent dans votre navigateur.
           </p>
           <div className="hero-actions">
-            <button className="btn btn-primary hero-primary-action" onClick={() => openModule('edit')}>
-              <ModuleIcon module="edit" />
-              Modifier un PDF
+            <button className="btn btn-primary hero-primary-action" onClick={() => openModule('scanner')}>
+              <ModuleIcon module="scanner" />
+              Scanner un document
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
             </button>
             <button className="btn hero-secondary-action" onClick={() => openModule('merge')}>
