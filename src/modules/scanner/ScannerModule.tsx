@@ -22,6 +22,10 @@ import {
   type LiveDocumentAnalysis,
   type ScanGuidePoint,
 } from './liveDocumentDetection'
+import {
+  loadOpenCvDocumentDetector,
+  type OpenCvDocumentDetector,
+} from './openCvDocumentDetection'
 
 interface ScanOcrResult {
   text: string
@@ -176,6 +180,7 @@ export default function ScannerModule() {
     localStorage.getItem(CAMERA_MULTIPAGE_KEY) === 'on'
   )
   const [cameraFlash, setCameraFlash] = useState(false)
+  const [cameraDetectorState, setCameraDetectorState] = useState<'loading' | 'ready' | 'fallback'>('loading')
   const [ocrRunning, setOcrRunning] = useState(false)
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -190,6 +195,7 @@ export default function ScannerModule() {
   const awaitingNextPageRef = useRef(false)
   const missingDocumentFramesRef = useRef(0)
   const cameraGuideRef = useRef<CameraGuideView>(initialCameraGuide)
+  const documentDetectorRef = useRef<OpenCvDocumentDetector | null>(null)
   const captureFrameRef = useRef<(automatic?: boolean) => Promise<void>>(async () => {})
 
   const selectedPage = useMemo(
@@ -301,6 +307,20 @@ export default function ScannerModule() {
     setCameraError(null)
     setCameraReady(false)
     setCameraGuide(initialCameraGuide)
+    if (documentDetectorRef.current) {
+      setCameraDetectorState('ready')
+    } else {
+      setCameraDetectorState('loading')
+      void loadOpenCvDocumentDetector()
+        .then((detector) => {
+          documentDetectorRef.current = detector
+          setCameraDetectorState('ready')
+        })
+        .catch((error) => {
+          console.warn('OpenCV indisponible, détecteur léger utilisé', error)
+          setCameraDetectorState('fallback')
+        })
+    }
     awaitingNextPageRef.current = false
     missingDocumentFramesRef.current = 0
     try {
@@ -383,9 +403,12 @@ export default function ScannerModule() {
     let previousCorners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null = null
 
     const analyze = (time: number) => {
-      if (time - lastAnalysisAt >= 155 && !captureInFlightRef.current && video.readyState >= 2) {
+      const detector = documentDetectorRef.current
+      const analysisInterval = detector ? 190 : 155
+      if (time - lastAnalysisAt >= analysisInterval && !captureInFlightRef.current && video.readyState >= 2) {
         lastAnalysisAt = time
-        const scale = Math.min(1, 300 / Math.max(video.videoWidth, video.videoHeight))
+        const targetEdge = detector ? 420 : 300
+        const scale = Math.min(1, targetEdge / Math.max(video.videoWidth, video.videoHeight))
         const width = Math.max(1, Math.round(video.videoWidth * scale))
         const height = Math.max(1, Math.round(video.videoHeight * scale))
         if (canvas.width !== width || canvas.height !== height) {
@@ -393,7 +416,16 @@ export default function ScannerModule() {
           canvas.height = height
         }
         ctx.drawImage(video, 0, 0, width, height)
-        const analysis = analyzeDocumentCanvas(canvas)
+        let analysis = analyzeDocumentCanvas(canvas)
+        if (detector) {
+          try {
+            analysis = detector.analyze(canvas) ?? initialCameraGuide
+          } catch (error) {
+            console.warn('Analyse OpenCV interrompue, détecteur léger utilisé', error)
+            documentDetectorRef.current = null
+            setCameraDetectorState('fallback')
+          }
+        }
         const overlayCorners = analysis.corners ? mapCornersToVideo(video, analysis.corners) : null
         if (awaitingNextPageRef.current) {
           missingDocumentFramesRef.current = analysis.detected && analysis.ready
@@ -764,7 +796,13 @@ export default function ScannerModule() {
               <span className="scanner-live-guidance-dot" aria-hidden="true" />
               <div>
                 <strong>{cameraGuide.message}</strong>
-                <span>{cameraGuide.detected ? 'Les quatre bords sont analysés sur cet appareil' : 'Recherche des bords du document…'}</span>
+                <span>{cameraDetectorState === 'loading'
+                  ? 'Préparation du détecteur OpenCV local…'
+                  : cameraDetectorState === 'ready'
+                    ? cameraGuide.detected
+                      ? 'Les quatre bords sont analysés sur cet appareil'
+                      : 'Recherche des contours du document…'
+                    : 'Détection locale simplifiée active'}</span>
               </div>
               <span className="scanner-stability-value">{Math.round(cameraGuide.stability * 100)} %</span>
               <span className="scanner-stability-track" aria-hidden="true">

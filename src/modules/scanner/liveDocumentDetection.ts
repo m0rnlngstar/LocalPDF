@@ -290,6 +290,116 @@ function intersect(vertical: Line, horizontal: Line): ScanGuidePoint | null {
   return { x, y: horizontal.slope * x + horizontal.intercept }
 }
 
+function pointInsideDocument(
+  x: number,
+  y: number,
+  corners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+) {
+  let inside = false
+  for (let current = 0, previous = corners.length - 1; current < corners.length; previous = current++) {
+    const a = corners[current]
+    const b = corners[previous]
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+/** Évalue la qualité d'un quadrilatère trouvé par un détecteur de contours. */
+export function assessDocumentCorners(
+  canvas: HTMLCanvasElement,
+  corners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+): LiveDocumentAnalysis {
+  const width = canvas.width
+  const height = canvas.height
+  const [topLeft, topRight, bottomRight, bottomLeft] = corners
+  const areaRatio = polygonArea(corners)
+  const topLength = distance(topLeft, topRight, width, height)
+  const bottomLength = distance(bottomLeft, bottomRight, width, height)
+  const leftLength = distance(topLeft, bottomLeft, width, height)
+  const rightLength = distance(topRight, bottomRight, width, height)
+  const perspective = Math.max(
+    Math.abs(topLength - bottomLength) / Math.max(topLength, bottomLength, 0.001),
+    Math.abs(leftLength - rightLength) / Math.max(leftLength, rightLength, 0.001)
+  )
+  const topAngle = Math.atan2(
+    (topRight.y - topLeft.y) * height,
+    (topRight.x - topLeft.x) * width
+  ) * 180 / Math.PI
+  const bottomAngle = Math.atan2(
+    (bottomRight.y - bottomLeft.y) * height,
+    (bottomRight.x - bottomLeft.x) * width
+  ) * 180 / Math.PI
+  const angle = (topAngle + bottomAngle) / 2
+  const clipped = corners.some((point) => (
+    point.x < 0.012 || point.x > 0.988 || point.y < 0.012 || point.y > 0.988
+  ))
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  const image = ctx?.getImageData(0, 0, width, height)
+  let brightnessTotal = 0
+  let sharpnessTotal = 0
+  let sampleCount = 0
+  if (image) {
+    const luma = new Uint8Array(width * height)
+    for (let pixel = 0; pixel < width * height; pixel++) {
+      const offset = pixel * 4
+      luma[pixel] = Math.round(
+        image.data[offset] * 0.299 + image.data[offset + 1] * 0.587 + image.data[offset + 2] * 0.114
+      )
+    }
+    for (let y = 2; y < height - 2; y += 2) {
+      for (let x = 2; x < width - 2; x += 2) {
+        if (!pointInsideDocument(x / width, y / height, corners)) continue
+        const pixel = y * width + x
+        brightnessTotal += luma[pixel]
+        sharpnessTotal += Math.abs(
+          luma[pixel] * 4 - luma[pixel - 1] - luma[pixel + 1] - luma[pixel - width] - luma[pixel + width]
+        )
+        sampleCount++
+      }
+    }
+  }
+  const brightness = brightnessTotal / Math.max(1, sampleCount)
+  const sharpness = clamp(((sharpnessTotal / Math.max(1, sampleCount)) - 1.2) / 13, 0, 1)
+
+  let status: ScanGuideStatus = 'ready'
+  let message = 'Document détecté — ne bougez plus'
+  if (clipped || areaRatio > 0.94) {
+    status = 'clipped'
+    message = 'Gardez les quatre coins visibles'
+  } else if (areaRatio < 0.15) {
+    status = 'too-far'
+    message = 'Rapprochez-vous du document'
+  } else if (Math.abs(angle) > 15) {
+    status = 'tilted'
+    message = 'Redressez légèrement le téléphone'
+  } else if (perspective > 0.48) {
+    status = 'perspective'
+    message = 'Placez le téléphone face au document'
+  } else if (brightness < 42) {
+    status = 'dark'
+    message = 'Ajoutez un peu de lumière'
+  } else if (sharpness < 0.035) {
+    status = 'blurry'
+    message = 'Stabilisez le téléphone'
+  }
+
+  return {
+    detected: true,
+    corners,
+    status,
+    message,
+    ready: status === 'ready',
+    areaRatio,
+    angle,
+    perspective,
+    brightness,
+    sharpness,
+  }
+}
+
 /**
  * Détection légère pensée pour fonctionner plusieurs fois par seconde sur un
  * téléphone. Elle segmente le fond à partir du pourtour, garde la plus grande
