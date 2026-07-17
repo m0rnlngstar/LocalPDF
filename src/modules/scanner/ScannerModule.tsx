@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { getOcrQuality, recognizeCanvas, type OcrWord } from '../../lib/ocr'
 import { preprocessForOcr } from '../../lib/preprocess'
@@ -15,6 +16,11 @@ import {
   IconX,
 } from '../../components/ui/icons'
 import { blobToCanvas, renderScan, type ScanFilter } from './scannerUtils'
+import {
+  analyzeDocumentCanvas,
+  type LiveDocumentAnalysis,
+  type ScanGuidePoint,
+} from './liveDocumentDetection'
 
 interface ScanOcrResult {
   text: string
@@ -43,8 +49,59 @@ interface OcrProgress {
   pct: number
 }
 
+interface CameraGuideView extends LiveDocumentAnalysis {
+  overlayCorners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null
+  stability: number
+}
+
 const FILTER_KEY = 'scanner-filter'
 const CROP_KEY = 'scanner-auto-crop'
+const CAMERA_AUTO_KEY = 'scanner-camera-auto-capture'
+
+const initialCameraGuide: CameraGuideView = {
+  detected: false,
+  corners: null,
+  overlayCorners: null,
+  status: 'searching',
+  message: 'Placez le document dans le cadre',
+  ready: false,
+  areaRatio: 0,
+  angle: 0,
+  perspective: 1,
+  brightness: 0,
+  sharpness: 0,
+  stability: 0,
+}
+
+function mapCornersToVideo(
+  video: HTMLVideoElement,
+  corners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+): [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] {
+  const elementWidth = Math.max(1, video.clientWidth)
+  const elementHeight = Math.max(1, video.clientHeight)
+  const fit = getComputedStyle(video).objectFit
+  const scale = fit === 'cover'
+    ? Math.max(elementWidth / video.videoWidth, elementHeight / video.videoHeight)
+    : Math.min(elementWidth / video.videoWidth, elementHeight / video.videoHeight)
+  const renderedWidth = video.videoWidth * scale
+  const renderedHeight = video.videoHeight * scale
+  const offsetX = (elementWidth - renderedWidth) / 2
+  const offsetY = (elementHeight - renderedHeight) / 2
+  return corners.map((point) => ({
+    x: (offsetX + point.x * renderedWidth) / elementWidth,
+    y: (offsetY + point.y * renderedHeight) / elementHeight,
+  })) as [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+}
+
+function cornerMotion(
+  previous: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null,
+  current: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null
+) {
+  if (!previous || !current) return Number.POSITIVE_INFINITY
+  return current.reduce((total, point, index) => (
+    total + Math.hypot(point.x - previous[index].x, point.y - previous[index].y)
+  ), 0) / current.length
+}
 
 const filterLabels: Record<ScanFilter, { label: string; description: string }> = {
   color: { label: 'Couleur', description: 'Photo fidèle et optimisée' },
@@ -104,6 +161,11 @@ export default function ScannerModule() {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [cameraGuide, setCameraGuide] = useState<CameraGuideView>(initialCameraGuide)
+  const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(
+    localStorage.getItem(CAMERA_AUTO_KEY) !== 'off'
+  )
+  const [cameraFlash, setCameraFlash] = useState(false)
   const [ocrRunning, setOcrRunning] = useState(false)
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -112,6 +174,12 @@ export default function ScannerModule() {
   const captureInputRef = useRef<HTMLInputElement>(null)
   const objectUrlsRef = useRef(new Set<string>())
   const cameraStreamRef = useRef<MediaStream | null>(null)
+  const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const captureInFlightRef = useRef(false)
+  const lastAutoCaptureRef = useRef(0)
+  const awaitingNextPageRef = useRef(false)
+  const missingDocumentFramesRef = useRef(0)
+  const captureFrameRef = useRef<(automatic?: boolean) => Promise<void>>(async () => {})
 
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedId) ?? pages[0] ?? null,
@@ -138,6 +206,11 @@ export default function ScannerModule() {
     setCameraOpen(false)
     setCameraReady(false)
     setCameraError(null)
+    setCameraGuide(initialCameraGuide)
+    setCameraFlash(false)
+    captureInFlightRef.current = false
+    awaitingNextPageRef.current = false
+    missingDocumentFramesRef.current = 0
   }
 
   useEffect(() => {
@@ -156,7 +229,7 @@ export default function ScannerModule() {
     objectUrlsRef.current.clear()
   }, [])
 
-  async function addBlobs(items: { blob: Blob; name: string }[]) {
+  async function addBlobs(items: { blob: Blob; name: string }[], quiet = false) {
     const images = items.filter(({ blob }) => blob.type.startsWith('image/'))
     if (!images.length) {
       toast.error('Choisissez une ou plusieurs images')
@@ -186,7 +259,9 @@ export default function ScannerModule() {
       }
       setPages((current) => [...current, ...added])
       setSelectedId((current) => current ?? added[0]?.id ?? null)
-      toast.success(`${added.length} page${added.length > 1 ? 's' : ''} ajoutée${added.length > 1 ? 's' : ''}`)
+      if (!quiet) {
+        toast.success(`${added.length} page${added.length > 1 ? 's' : ''} ajoutée${added.length > 1 ? 's' : ''}`)
+      }
     } catch (error) {
       console.error(error)
       toast.error("Impossible de préparer l'image")
@@ -207,6 +282,9 @@ export default function ScannerModule() {
     setCameraOpen(true)
     setCameraError(null)
     setCameraReady(false)
+    setCameraGuide(initialCameraGuide)
+    awaitingNextPageRef.current = false
+    missingDocumentFramesRef.current = 0
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -216,6 +294,13 @@ export default function ScannerModule() {
           height: { ideal: 1920 },
         },
       })
+      const track = stream.getVideoTracks()[0]
+      const capabilities = track?.getCapabilities() as (MediaTrackCapabilities & { focusMode?: string[] }) | undefined
+      if (track && capabilities?.focusMode?.includes('continuous')) {
+        await track.applyConstraints({
+          advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
+        }).catch(() => {})
+      }
       cameraStreamRef.current = stream
       setCameraStream(stream)
     } catch (error) {
@@ -224,20 +309,114 @@ export default function ScannerModule() {
     }
   }
 
-  async function captureFrame() {
+  async function captureFrame(automatic = false) {
     const video = videoRef.current
-    if (!video || !cameraReady || !video.videoWidth || !video.videoHeight) return
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    canvas.getContext('2d')!.drawImage(video, 0, 0)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95))
-    if (!blob) {
-      toast.error("La photo n'a pas pu être capturée")
-      return
+    if (!video || !cameraReady || !video.videoWidth || !video.videoHeight || captureInFlightRef.current) return
+    captureInFlightRef.current = true
+    setCameraFlash(true)
+    window.setTimeout(() => setCameraFlash(false), 180)
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      canvas.getContext('2d')!.drawImage(video, 0, 0)
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95))
+      if (!blob) {
+        toast.error("La photo n'a pas pu être capturée")
+        return
+      }
+      if (automatic) navigator.vibrate?.(35)
+      if (automatic || autoCaptureEnabled) awaitingNextPageRef.current = true
+      await addBlobs([{ blob, name: `photo-${Date.now()}.jpg` }], automatic)
+    } finally {
+      captureInFlightRef.current = false
     }
-    await addBlobs([{ blob, name: `photo-${pages.length + 1}.jpg` }])
   }
+
+  useEffect(() => {
+    captureFrameRef.current = captureFrame
+  })
+
+  useEffect(() => {
+    if (!cameraOpen || !cameraReady) return
+    const video = videoRef.current
+    if (!video) return
+    const canvas = analysisCanvasRef.current ?? document.createElement('canvas')
+    analysisCanvasRef.current = canvas
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return
+
+    let animationFrame = 0
+    let lastAnalysisAt = 0
+    let stableFrames = 0
+    let previousCorners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null = null
+
+    const analyze = (time: number) => {
+      if (time - lastAnalysisAt >= 155 && !captureInFlightRef.current && video.readyState >= 2) {
+        lastAnalysisAt = time
+        const scale = Math.min(1, 300 / Math.max(video.videoWidth, video.videoHeight))
+        const width = Math.max(1, Math.round(video.videoWidth * scale))
+        const height = Math.max(1, Math.round(video.videoHeight * scale))
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width
+          canvas.height = height
+        }
+        ctx.drawImage(video, 0, 0, width, height)
+        const analysis = analyzeDocumentCanvas(canvas)
+        const overlayCorners = analysis.corners ? mapCornersToVideo(video, analysis.corners) : null
+        if (awaitingNextPageRef.current) {
+          missingDocumentFramesRef.current = analysis.detected && analysis.ready
+            ? 0
+            : missingDocumentFramesRef.current + 1
+          if (missingDocumentFramesRef.current >= 3) {
+            awaitingNextPageRef.current = false
+            missingDocumentFramesRef.current = 0
+            previousCorners = null
+          } else {
+            stableFrames = 0
+            previousCorners = analysis.corners
+            setCameraGuide({
+              ...analysis,
+              overlayCorners,
+              stability: 0,
+              message: 'Page capturée — présentez la suivante',
+            })
+          }
+        }
+
+        if (!awaitingNextPageRef.current) {
+          const motion = cornerMotion(previousCorners, analysis.corners)
+          if (analysis.ready && motion < 0.018) {
+            stableFrames = Math.min(7, stableFrames + 1)
+          } else if (analysis.ready && !previousCorners) {
+            stableFrames = 1
+          } else {
+            stableFrames = Math.max(0, stableFrames - 2)
+          }
+          previousCorners = analysis.corners
+          const stability = stableFrames / 7
+          const stable = analysis.ready && stability >= 1
+          const message = analysis.ready
+            ? stable
+              ? autoCaptureEnabled ? 'Parfait — capture automatique' : 'Parfait — vous pouvez capturer'
+              : 'Document détecté — ne bougez plus'
+            : analysis.message
+          setCameraGuide({ ...analysis, overlayCorners, stability, message })
+
+          if (stable && autoCaptureEnabled && Date.now() - lastAutoCaptureRef.current > 2400) {
+            lastAutoCaptureRef.current = Date.now()
+            stableFrames = 0
+            previousCorners = null
+            void captureFrameRef.current(true)
+          }
+        }
+      }
+      animationFrame = requestAnimationFrame(analyze)
+    }
+
+    animationFrame = requestAnimationFrame(analyze)
+    return () => cancelAnimationFrame(animationFrame)
+  }, [autoCaptureEnabled, cameraOpen, cameraReady])
 
   async function updatePage(
     page: ScanPage,
@@ -451,17 +630,36 @@ export default function ScannerModule() {
     )
   }
 
-  const cameraPanel = cameraOpen && (
+  const guidePolygon = cameraGuide.overlayCorners
+    ?.map((point) => `${(point.x * 100).toFixed(2)},${(point.y * 100).toFixed(2)}`)
+    .join(' ')
+
+  const cameraPanel = cameraOpen ? createPortal((
     <div className="scanner-camera-backdrop" role="dialog" aria-modal="true" aria-label="Prendre des photos">
       <div className="scanner-camera-panel">
         <div className="scanner-camera-head">
           <div>
-            <span className="scanner-camera-kicker">Capture locale</span>
-            <h3>Cadrez votre document</h3>
+            <span className="scanner-camera-kicker">Analyse locale en direct</span>
+            <h3>Détection intelligente</h3>
           </div>
-          <button className="btn btn-circle btn-ghost" onClick={stopCamera} aria-label="Fermer la caméra">
-            <IconX />
-          </button>
+          <div className="scanner-camera-head-actions">
+            <button
+              type="button"
+              className={`scanner-auto-capture ${autoCaptureEnabled ? 'is-on' : ''}`}
+              aria-pressed={autoCaptureEnabled}
+              onClick={() => {
+                const next = !autoCaptureEnabled
+                setAutoCaptureEnabled(next)
+                localStorage.setItem(CAMERA_AUTO_KEY, next ? 'on' : 'off')
+              }}
+            >
+              <span aria-hidden="true"><i /></span>
+              Capture auto
+            </button>
+            <button className="btn btn-circle btn-ghost" onClick={stopCamera} aria-label="Fermer la caméra">
+              <IconX />
+            </button>
+          </div>
         </div>
         <div className="scanner-camera-viewport">
           {cameraStream && <video ref={videoRef} playsInline muted />}
@@ -475,23 +673,83 @@ export default function ScannerModule() {
               </button>
             </div>
           )}
-          {cameraReady && <span className="scanner-frame-guide" aria-hidden="true" />}
+          {cameraReady && !guidePolygon && <span className="scanner-frame-guide" aria-hidden="true" />}
+          {cameraReady && guidePolygon && (
+            <svg
+              className={`scanner-document-guide ${cameraGuide.ready ? 'is-ready' : 'is-adjusting'}`}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path d={`M0 0H100V100H0Z M${guidePolygon}Z`} fillRule="evenodd" />
+              <polygon points={guidePolygon} vectorEffect="non-scaling-stroke" />
+              {cameraGuide.overlayCorners?.map((point, index) => (
+                <circle
+                  key={index}
+                  cx={point.x * 100}
+                  cy={point.y * 100}
+                  r="1.15"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </svg>
+          )}
+          {cameraReady && (
+            <div className={`scanner-live-guidance status-${cameraGuide.status}`}>
+              <span className="scanner-live-guidance-dot" aria-hidden="true" />
+              <div>
+                <strong>{cameraGuide.message}</strong>
+                <span>{cameraGuide.detected ? 'Les quatre bords sont analysés sur cet appareil' : 'Recherche des bords du document…'}</span>
+              </div>
+              <span className="scanner-stability-value">{Math.round(cameraGuide.stability * 100)} %</span>
+              <span className="scanner-stability-track" aria-hidden="true">
+                <i style={{ width: `${cameraGuide.stability * 100}%` }} />
+              </span>
+            </div>
+          )}
+          {cameraReady && (
+            <div className="scanner-quality-chips" aria-label="Qualité de la capture">
+              <span className={cameraGuide.detected && cameraGuide.status !== 'clipped' ? 'is-good' : ''}>
+                <i /> 4 coins
+              </span>
+              <span className={cameraGuide.detected && Math.abs(cameraGuide.angle) <= 7.5 ? 'is-good' : ''}>
+                <i /> Angle
+              </span>
+              <span className={cameraGuide.stability >= 0.65 ? 'is-good' : ''}>
+                <i /> Stable
+              </span>
+            </div>
+          )}
+          <span className={`scanner-camera-flash ${cameraFlash ? 'is-visible' : ''}`} aria-hidden="true" />
         </div>
         <div className="scanner-camera-actions">
           <span>{pages.length} page{pages.length > 1 ? 's' : ''}</span>
           <button
-            className="scanner-shutter"
+            className={`scanner-shutter ${cameraGuide.ready ? 'is-ready' : ''}`}
             onClick={() => void captureFrame()}
             disabled={!cameraReady || processing}
             aria-label="Prendre la photo"
-          ><span /></button>
+          >
+            <svg viewBox="0 0 44 44" aria-hidden="true">
+              <circle cx="22" cy="22" r="19" pathLength="100" />
+              <circle
+                className="scanner-shutter-progress"
+                cx="22"
+                cy="22"
+                r="19"
+                pathLength="100"
+                style={{ strokeDashoffset: 100 - cameraGuide.stability * 100 }}
+              />
+            </svg>
+            <span />
+          </button>
           <button className="btn btn-sm btn-primary" onClick={stopCamera} disabled={!pages.length}>
             Terminer
           </button>
         </div>
       </div>
     </div>
-  )
+  ), document.body) : null
 
   const hiddenInputs = (
     <>

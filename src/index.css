@@ -1670,6 +1670,52 @@ h6 {
 
 .scanner-camera-head h3 { margin: 0.1rem 0 0; font-size: 1rem; }
 .scanner-camera-kicker { color: rgb(255 255 255 / 0.52); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.scanner-camera-head .btn-ghost { color: white; }
+.scanner-camera-head-actions { display: flex; align-items: center; gap: 0.55rem; }
+
+.scanner-auto-capture {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  color: rgb(255 255 255 / 0.62);
+  background: rgb(255 255 255 / 0.07);
+  font-size: 0.67rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.scanner-auto-capture > span {
+  position: relative;
+  width: 1.65rem;
+  height: 0.95rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.2);
+  transition: background 160ms ease;
+}
+
+.scanner-auto-capture i {
+  position: absolute;
+  top: 0.14rem;
+  left: 0.14rem;
+  width: 0.67rem;
+  height: 0.67rem;
+  border-radius: 50%;
+  background: white;
+  transition: transform 160ms ease;
+}
+
+.scanner-auto-capture.is-on {
+  border-color: rgb(52 211 153 / 0.4);
+  color: #d1fae5;
+  background: rgb(16 185 129 / 0.15);
+}
+.scanner-auto-capture.is-on > span { background: #10b981; }
+.scanner-auto-capture.is-on i { transform: translateX(0.7rem); }
 
 .scanner-camera-viewport {
   position: relative;
@@ -1702,6 +1748,134 @@ h6 {
 .scanner-frame-guide::before { top: -3px; left: -3px; border-top: 4px solid; border-left: 4px solid; border-radius: 0.55rem 0 0; }
 .scanner-frame-guide::after { right: -3px; bottom: -3px; border-right: 4px solid; border-bottom: 4px solid; border-radius: 0 0 0.55rem; }
 
+.scanner-document-guide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.scanner-document-guide path {
+  fill: rgb(0 0 0 / 0.34);
+  transition: fill 160ms ease;
+}
+
+.scanner-document-guide polygon {
+  fill: rgb(109 93 252 / 0.08);
+  stroke: #a99cff;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 7px rgb(109 93 252 / 0.72));
+  transition: fill 160ms ease, stroke 160ms ease;
+}
+
+.scanner-document-guide circle {
+  fill: white;
+  stroke: #7667f2;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 1px 4px rgb(0 0 0 / 0.65));
+}
+
+.scanner-document-guide.is-ready path { fill: rgb(0 0 0 / 0.24); }
+.scanner-document-guide.is-ready polygon {
+  fill: rgb(16 185 129 / 0.08);
+  stroke: #34d399;
+  filter: drop-shadow(0 0 8px rgb(16 185 129 / 0.8));
+}
+.scanner-document-guide.is-ready circle { stroke: #10b981; }
+
+.scanner-live-guidance {
+  position: absolute;
+  z-index: 3;
+  top: 1rem;
+  left: 50%;
+  display: grid;
+  width: min(calc(100% - 2rem), 31rem);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem 0.82rem;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0.95rem;
+  color: white;
+  background: rgb(5 10 25 / 0.74);
+  box-shadow: 0 10px 35px rgb(0 0 0 / 0.28);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.scanner-live-guidance-dot {
+  width: 0.66rem;
+  height: 0.66rem;
+  border-radius: 50%;
+  background: #a99cff;
+  box-shadow: 0 0 0 5px rgb(169 156 255 / 0.13);
+}
+
+.scanner-live-guidance.status-ready .scanner-live-guidance-dot {
+  background: #34d399;
+  box-shadow: 0 0 0 5px rgb(52 211 153 / 0.15);
+}
+
+.scanner-live-guidance > div { display: flex; min-width: 0; flex-direction: column; }
+.scanner-live-guidance strong { overflow: hidden; font-size: 0.78rem; text-overflow: ellipsis; white-space: nowrap; }
+.scanner-live-guidance div span { color: rgb(255 255 255 / 0.54); font-size: 0.58rem; }
+.scanner-stability-value { color: rgb(255 255 255 / 0.58); font-size: 0.65rem; font-variant-numeric: tabular-nums; }
+
+.scanner-stability-track {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: rgb(255 255 255 / 0.09);
+}
+.scanner-stability-track i { display: block; height: 100%; background: linear-gradient(90deg, #7667f2, #34d399); transition: width 140ms linear; }
+
+.scanner-quality-chips {
+  position: absolute;
+  z-index: 3;
+  bottom: 0.8rem;
+  left: 50%;
+  display: flex;
+  gap: 0.4rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.scanner-quality-chips span {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.34rem 0.52rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 999px;
+  color: rgb(255 255 255 / 0.55);
+  background: rgb(5 10 25 / 0.6);
+  font-size: 0.58rem;
+  font-weight: 720;
+  backdrop-filter: blur(10px);
+}
+
+.scanner-quality-chips i { width: 0.36rem; height: 0.36rem; border-radius: 50%; background: rgb(255 255 255 / 0.3); }
+.scanner-quality-chips span.is-good { color: #d1fae5; border-color: rgb(52 211 153 / 0.26); }
+.scanner-quality-chips span.is-good i { background: #34d399; box-shadow: 0 0 7px rgb(52 211 153 / 0.7); }
+
+.scanner-camera-flash {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  background: white;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+}
+.scanner-camera-flash.is-visible { opacity: 0.82; transition-duration: 25ms; }
+
 .scanner-camera-error {
   display: flex;
   max-width: 25rem;
@@ -1715,16 +1889,21 @@ h6 {
 
 .scanner-camera-actions > span { min-width: 6rem; color: rgb(255 255 255 / 0.55); font-size: 0.72rem; }
 .scanner-shutter {
+  position: relative;
   display: grid;
   width: 4.25rem;
   height: 4.25rem;
   place-items: center;
-  border: 3px solid white;
+  border: 0;
   border-radius: 50%;
   background: transparent;
   transition: transform 120ms ease, opacity 120ms ease;
 }
-.scanner-shutter span { width: 3.15rem; height: 3.15rem; border-radius: 50%; background: white; }
+.scanner-shutter svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.scanner-shutter svg circle { fill: none; stroke: rgb(255 255 255 / 0.42); stroke-width: 2.4; }
+.scanner-shutter svg .scanner-shutter-progress { stroke: #34d399; stroke-dasharray: 100; stroke-dashoffset: 100; stroke-linecap: round; transition: stroke-dashoffset 140ms linear; }
+.scanner-shutter > span { width: 3.05rem; height: 3.05rem; border-radius: 50%; background: white; box-shadow: 0 2px 15px rgb(0 0 0 / 0.25); }
+.scanner-shutter.is-ready > span { box-shadow: 0 0 0 5px rgb(52 211 153 / 0.14), 0 2px 15px rgb(0 0 0 / 0.25); }
 .scanner-shutter:hover:not(:disabled) { transform: scale(1.05); }
 .scanner-shutter:active:not(:disabled) { transform: scale(0.94); }
 .scanner-shutter:disabled { opacity: 0.35; }
@@ -1759,9 +1938,13 @@ h6 {
   .scanner-export-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .scanner-export-actions .btn-primary { grid-column: 1 / -1; }
   .scanner-camera-backdrop { padding: 0; }
-  .scanner-camera-panel { width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; }
+  .scanner-camera-panel { width: 100%; height: 100%; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+  .scanner-camera-head { padding-top: max(0.7rem, env(safe-area-inset-top)); }
+  .scanner-camera-actions { padding-bottom: max(0.8rem, env(safe-area-inset-bottom)); }
   .scanner-camera-viewport { min-height: 0; flex: 1; }
   .scanner-camera-viewport video { height: 100%; object-fit: cover; }
+  .scanner-live-guidance { top: 0.75rem; }
+  .scanner-quality-chips { bottom: 0.65rem; }
 }
 
 @media (max-width: 480px) {
@@ -1772,4 +1955,13 @@ h6 {
   .scanner-page-actions .btn { min-width: 2.25rem; padding-inline: 0.55rem; }
   .scanner-page-actions .btn:nth-last-child(2) { flex: 1; }
   .scanner-start-description { max-width: 16rem; }
+  .scanner-camera-head { gap: 0.55rem; padding-inline: 0.75rem; }
+  .scanner-camera-head h3 { font-size: 0.88rem; }
+  .scanner-camera-kicker { font-size: 0.52rem; }
+  .scanner-camera-head-actions { gap: 0.3rem; }
+  .scanner-auto-capture { padding-inline: 0.45rem; font-size: 0.58rem; }
+  .scanner-live-guidance { width: calc(100% - 1.2rem); }
+  .scanner-live-guidance div span { display: none; }
+  .scanner-live-guidance strong { white-space: normal; line-height: 1.25; }
+  .scanner-quality-chips span { padding-inline: 0.42rem; }
 }
