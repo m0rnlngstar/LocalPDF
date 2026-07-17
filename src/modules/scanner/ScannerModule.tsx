@@ -18,6 +18,7 @@ import {
 import { blobToCanvas, renderScan, type ScanFilter } from './scannerUtils'
 import {
   analyzeDocumentCanvas,
+  rectifyDocumentPerspective,
   type LiveDocumentAnalysis,
   type ScanGuidePoint,
 } from './liveDocumentDetection'
@@ -57,6 +58,8 @@ interface CameraGuideView extends LiveDocumentAnalysis {
 const FILTER_KEY = 'scanner-filter'
 const CROP_KEY = 'scanner-auto-crop'
 const CAMERA_AUTO_KEY = 'scanner-camera-auto-capture'
+const CAMERA_FILTER_KEY = 'scanner-camera-filter'
+const CAMERA_MULTIPAGE_KEY = 'scanner-camera-multipage'
 
 const initialCameraGuide: CameraGuideView = {
   detected: false,
@@ -165,6 +168,13 @@ export default function ScannerModule() {
   const [autoCaptureEnabled, setAutoCaptureEnabled] = useState(
     localStorage.getItem(CAMERA_AUTO_KEY) !== 'off'
   )
+  const [cameraFilter, setCameraFilter] = useState<ScanFilter>(() => {
+    const stored = localStorage.getItem(CAMERA_FILTER_KEY)
+    return stored === 'gray' || stored === 'document' ? stored : 'color'
+  })
+  const [cameraMultipage, setCameraMultipage] = useState(
+    localStorage.getItem(CAMERA_MULTIPAGE_KEY) === 'on'
+  )
   const [cameraFlash, setCameraFlash] = useState(false)
   const [ocrRunning, setOcrRunning] = useState(false)
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null)
@@ -179,6 +189,7 @@ export default function ScannerModule() {
   const lastAutoCaptureRef = useRef(0)
   const awaitingNextPageRef = useRef(false)
   const missingDocumentFramesRef = useRef(0)
+  const cameraGuideRef = useRef<CameraGuideView>(initialCameraGuide)
   const captureFrameRef = useRef<(automatic?: boolean) => Promise<void>>(async () => {})
 
   const selectedPage = useMemo(
@@ -229,19 +240,24 @@ export default function ScannerModule() {
     objectUrlsRef.current.clear()
   }, [])
 
-  async function addBlobs(items: { blob: Blob; name: string }[], quiet = false) {
+  async function addBlobs(
+    items: { blob: Blob; name: string }[],
+    quiet = false,
+    filterOverride?: ScanFilter
+  ) {
     const images = items.filter(({ blob }) => blob.type.startsWith('image/'))
     if (!images.length) {
       toast.error('Choisissez une ou plusieurs images')
-      return
+      return false
     }
     setProcessing(true)
     try {
       const added: ScanPage[] = []
       for (const { blob, name } of images) {
+        const filter = filterOverride ?? defaultFilter
         const rendered = await renderScan(blob, {
           rotation: 0,
-          filter: defaultFilter,
+          filter,
           autoCrop,
         })
         added.push({
@@ -253,7 +269,7 @@ export default function ScannerModule() {
           width: rendered.width,
           height: rendered.height,
           rotation: 0,
-          filter: defaultFilter,
+          filter,
           cropApplied: rendered.cropApplied,
         })
       }
@@ -262,9 +278,11 @@ export default function ScannerModule() {
       if (!quiet) {
         toast.success(`${added.length} page${added.length > 1 ? 's' : ''} ajoutée${added.length > 1 ? 's' : ''}`)
       }
+      return true
     } catch (error) {
       console.error(error)
       toast.error("Impossible de préparer l'image")
+      return false
     } finally {
       setProcessing(false)
     }
@@ -320,14 +338,23 @@ export default function ScannerModule() {
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
       canvas.getContext('2d')!.drawImage(video, 0, 0)
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95))
+      const guide = cameraGuideRef.current
+      const corrected = guide.detected && guide.corners
+        ? rectifyDocumentPerspective(canvas, guide.corners)
+        : canvas
+      const blob = await new Promise<Blob | null>((resolve) => corrected.toBlob(resolve, 'image/jpeg', 0.97))
       if (!blob) {
         toast.error("La photo n'a pas pu être capturée")
         return
       }
       if (automatic) navigator.vibrate?.(35)
-      if (automatic || autoCaptureEnabled) awaitingNextPageRef.current = true
-      await addBlobs([{ blob, name: `photo-${Date.now()}.jpg` }], automatic)
+      if (cameraMultipage && (automatic || autoCaptureEnabled)) awaitingNextPageRef.current = true
+      const added = await addBlobs(
+        [{ blob, name: `photo-${Date.now()}.jpg` }],
+        automatic && cameraMultipage,
+        cameraFilter
+      )
+      if (added && !cameraMultipage) stopCamera()
     } finally {
       captureInFlightRef.current = false
     }
@@ -336,6 +363,10 @@ export default function ScannerModule() {
   useEffect(() => {
     captureFrameRef.current = captureFrame
   })
+
+  useEffect(() => {
+    cameraGuideRef.current = cameraGuide
+  }, [cameraGuide])
 
   useEffect(() => {
     if (!cameraOpen || !cameraReady) return
@@ -661,6 +692,40 @@ export default function ScannerModule() {
             </button>
           </div>
         </div>
+        <div className="scanner-camera-settings">
+          <div className="scanner-camera-render-options" role="group" aria-label="Rendu du scan">
+            {([
+              ['color', 'Couleur'],
+              ['gray', 'Gris'],
+              ['document', 'N&B'],
+            ] as [ScanFilter, string][]).map(([filter, label]) => (
+              <button
+                type="button"
+                key={filter}
+                className={cameraFilter === filter ? 'is-active' : ''}
+                aria-pressed={cameraFilter === filter}
+                onClick={() => {
+                  setCameraFilter(filter)
+                  localStorage.setItem(CAMERA_FILTER_KEY, filter)
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className={`scanner-multipage-toggle ${cameraMultipage ? 'is-on' : ''}`}
+            aria-pressed={cameraMultipage}
+            onClick={() => {
+              const next = !cameraMultipage
+              setCameraMultipage(next)
+              localStorage.setItem(CAMERA_MULTIPAGE_KEY, next ? 'on' : 'off')
+            }}
+          >
+            <IconPlus /> Multipage
+          </button>
+        </div>
         <div className="scanner-camera-viewport">
           {cameraStream && <video ref={videoRef} playsInline muted />}
           {!cameraStream && !cameraError && <span className="loading loading-spinner loading-lg" />}
@@ -796,7 +861,7 @@ export default function ScannerModule() {
             <button className="scanner-start-card scanner-camera-card" onClick={() => void openCamera()}>
               <span className="scanner-start-icon"><CameraIcon large /></span>
               <span className="scanner-start-label">Utiliser la caméra</span>
-              <span className="scanner-start-description">Téléphone, tablette ou webcam · mode multipage</span>
+              <span className="scanner-start-description">Téléphone, tablette ou webcam · capture guidée</span>
               <span className="scanner-start-action">Ouvrir la caméra <IconChevronRight /></span>
             </button>
             <button className="scanner-start-card" onClick={() => galleryInputRef.current?.click()}>

@@ -62,6 +62,206 @@ function polygonArea(points: ScanGuidePoint[]) {
   return Math.abs(area) / 2
 }
 
+function drawTexturedTriangle(
+  ctx: CanvasRenderingContext2D,
+  source: HTMLCanvasElement,
+  sourcePoints: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint],
+  destinationPoints: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+) {
+  const [s0, s1, s2] = sourcePoints
+  const [d0, d1, d2] = destinationPoints
+  const denominator = s0.x * (s1.y - s2.y) + s1.x * (s2.y - s0.y) + s2.x * (s0.y - s1.y)
+  if (Math.abs(denominator) < 0.0001) return
+  const a = (d0.x * (s1.y - s2.y) + d1.x * (s2.y - s0.y) + d2.x * (s0.y - s1.y)) / denominator
+  const c = (d0.x * (s2.x - s1.x) + d1.x * (s0.x - s2.x) + d2.x * (s1.x - s0.x)) / denominator
+  const e = (
+    d0.x * (s1.x * s2.y - s2.x * s1.y)
+    + d1.x * (s2.x * s0.y - s0.x * s2.y)
+    + d2.x * (s0.x * s1.y - s1.x * s0.y)
+  ) / denominator
+  const b = (d0.y * (s1.y - s2.y) + d1.y * (s2.y - s0.y) + d2.y * (s0.y - s1.y)) / denominator
+  const d = (d0.y * (s2.x - s1.x) + d1.y * (s0.x - s2.x) + d2.y * (s1.x - s0.x)) / denominator
+  const f = (
+    d0.y * (s1.x * s2.y - s2.x * s1.y)
+    + d1.y * (s2.x * s0.y - s0.x * s2.y)
+    + d2.y * (s0.x * s1.y - s1.x * s0.y)
+  ) / denominator
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(d0.x, d0.y)
+  ctx.lineTo(d1.x, d1.y)
+  ctx.lineTo(d2.x, d2.y)
+  ctx.closePath()
+  ctx.clip()
+  ctx.setTransform(a, b, c, d, e, f)
+  ctx.drawImage(source, 0, 0)
+  ctx.restore()
+}
+
+function drawPerspectiveWithWebGl(
+  output: HTMLCanvasElement,
+  source: HTMLCanvasElement,
+  corners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+) {
+  const gl = output.getContext('webgl', {
+    alpha: false,
+    antialias: false,
+    preserveDrawingBuffer: true,
+  })
+  if (!gl) return false
+  const compileShader = (type: number, shaderSource: string) => {
+    const shader = gl.createShader(type)
+    if (!shader) return null
+    gl.shaderSource(shader, shaderSource)
+    gl.compileShader(shader)
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      gl.deleteShader(shader)
+      return null
+    }
+    return shader
+  }
+  const vertexShader = compileShader(gl.VERTEX_SHADER, `
+    attribute vec2 a_position;
+    attribute vec2 a_uv;
+    varying vec2 v_uv;
+    void main() {
+      gl_Position = vec4(a_position, 0.0, 1.0);
+      v_uv = a_uv;
+    }
+  `)
+  const fragmentShader = compileShader(gl.FRAGMENT_SHADER, `
+    precision highp float;
+    uniform sampler2D u_texture;
+    uniform vec2 u_top_left;
+    uniform vec2 u_top_right;
+    uniform vec2 u_bottom_right;
+    uniform vec2 u_bottom_left;
+    varying vec2 v_uv;
+    void main() {
+      vec2 top = mix(u_top_left, u_top_right, v_uv.x);
+      vec2 bottom = mix(u_bottom_left, u_bottom_right, v_uv.x);
+      vec2 source_point = mix(top, bottom, v_uv.y);
+      gl_FragColor = texture2D(u_texture, source_point);
+    }
+  `)
+  if (!vertexShader || !fragmentShader) return false
+  const program = gl.createProgram()
+  if (!program) return false
+  gl.attachShader(program, vertexShader)
+  gl.attachShader(program, fragmentShader)
+  gl.linkProgram(program)
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return false
+  gl.useProgram(program)
+
+  const buffer = gl.createBuffer()
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    -1, -1, 0, 1,
+     1, -1, 1, 1,
+    -1,  1, 0, 0,
+     1,  1, 1, 0,
+  ]), gl.STATIC_DRAW)
+  const positionLocation = gl.getAttribLocation(program, 'a_position')
+  const uvLocation = gl.getAttribLocation(program, 'a_uv')
+  gl.enableVertexAttribArray(positionLocation)
+  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0)
+  gl.enableVertexAttribArray(uvLocation)
+  gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, 16, 8)
+
+  const texture = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
+
+  const [topLeft, topRight, bottomRight, bottomLeft] = corners
+  gl.uniform2f(gl.getUniformLocation(program, 'u_top_left'), topLeft.x, topLeft.y)
+  gl.uniform2f(gl.getUniformLocation(program, 'u_top_right'), topRight.x, topRight.y)
+  gl.uniform2f(gl.getUniformLocation(program, 'u_bottom_right'), bottomRight.x, bottomRight.y)
+  gl.uniform2f(gl.getUniformLocation(program, 'u_bottom_left'), bottomLeft.x, bottomLeft.y)
+  gl.viewport(0, 0, output.width, output.height)
+  gl.clearColor(1, 1, 1, 1)
+  gl.clear(gl.COLOR_BUFFER_BIT)
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  gl.finish()
+  return gl.getError() === gl.NO_ERROR
+}
+
+/**
+ * Redresse la feuille détectée vers un rectangle. Un maillage léger reproduit
+ * la perspective sans dépendance native et conserve la résolution de la photo.
+ */
+export function rectifyDocumentPerspective(
+  source: HTMLCanvasElement,
+  normalizedCorners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint],
+  maxEdge = 2800
+): HTMLCanvasElement {
+  if (polygonArea(normalizedCorners) < 0.1) return source
+  const center = normalizedCorners.reduce((value, point) => ({
+    x: value.x + point.x / normalizedCorners.length,
+    y: value.y + point.y / normalizedCorners.length,
+  }), { x: 0, y: 0 })
+  const safeNormalizedCorners = normalizedCorners.map((point) => ({
+    x: clamp(point.x + (center.x - point.x) * 0.014, 0, 1),
+    y: clamp(point.y + (center.y - point.y) * 0.014, 0, 1),
+  })) as [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+  const corners = safeNormalizedCorners.map((point) => ({
+    x: point.x * source.width,
+    y: point.y * source.height,
+  })) as [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+  const [topLeft, topRight, bottomRight, bottomLeft] = corners
+  const naturalWidth = (distance(topLeft, topRight) + distance(bottomLeft, bottomRight)) / 2
+  const naturalHeight = (distance(topLeft, bottomLeft) + distance(topRight, bottomRight)) / 2
+  if (naturalWidth < 120 || naturalHeight < 120) return source
+  const outputScale = Math.min(1, maxEdge / Math.max(naturalWidth, naturalHeight))
+  const output = document.createElement('canvas')
+  output.width = Math.max(1, Math.round(naturalWidth * outputScale))
+  output.height = Math.max(1, Math.round(naturalHeight * outputScale))
+  if (drawPerspectiveWithWebGl(output, source, safeNormalizedCorners)) return output
+  const ctx = output.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, output.width, output.height)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+
+  const columns = clamp(Math.round(output.width / 95), 12, 30)
+  const rows = clamp(Math.round(output.height / 95), 12, 36)
+  const sourceAt = (u: number, v: number): ScanGuidePoint => ({
+    x: (1 - v) * ((1 - u) * topLeft.x + u * topRight.x)
+      + v * ((1 - u) * bottomLeft.x + u * bottomRight.x),
+    y: (1 - v) * ((1 - u) * topLeft.y + u * topRight.y)
+      + v * ((1 - u) * bottomLeft.y + u * bottomRight.y),
+  })
+  const destinationAt = (u: number, v: number): ScanGuidePoint => ({
+    x: u * output.width,
+    y: v * output.height,
+  })
+
+  for (let row = 0; row < rows; row++) {
+    const v0 = row / rows
+    const v1 = (row + 1) / rows
+    for (let column = 0; column < columns; column++) {
+      const u0 = column / columns
+      const u1 = (column + 1) / columns
+      const s00 = sourceAt(u0, v0)
+      const s10 = sourceAt(u1, v0)
+      const s11 = sourceAt(u1, v1)
+      const s01 = sourceAt(u0, v1)
+      const d00 = destinationAt(u0, v0)
+      const d10 = destinationAt(u1, v0)
+      const d11 = destinationAt(u1, v1)
+      const d01 = destinationAt(u0, v1)
+      drawTexturedTriangle(ctx, source, [s00, s10, s11], [d00, d10, d11])
+      drawTexturedTriangle(ctx, source, [s00, s11, s01], [d00, d11, d01])
+    }
+  }
+  return output
+}
+
 function fitLine(samples: { independent: number; dependent: number }[]): Line | null {
   if (samples.length < 4) return null
   let sumX = 0
