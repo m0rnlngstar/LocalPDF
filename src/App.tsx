@@ -8,6 +8,7 @@ import { BrandMark, ModuleIcon } from './components/ui/ModuleIcon'
 // Chaque module est chargé en lazy : on ne paie pdf.js/tesseract qu'à l'usage.
 const moduleComponents: Record<ModuleId, React.LazyExoticComponent<React.ComponentType>> = {
   home: lazy(() => import('./modules/home/Dashboard')),
+  scanner: lazy(() => import('./modules/scanner/ScannerModule')),
   docchat: lazy(() => import('./modules/docchat/DocChatModule')),
   create: lazy(() => import('./modules/create/CreateModule')),
   edit: lazy(() => import('./modules/edit/EditModule')),
@@ -36,7 +37,7 @@ function LocalBadge() {
 
 const NAV_GROUPS: { label: string; modules: ModuleId[] }[] = [
   { label: 'Espace de travail', modules: ['home'] },
-  { label: 'Créer et organiser', modules: ['create', 'edit', 'merge', 'split'] },
+  { label: 'Créer et organiser', modules: ['scanner', 'create', 'edit', 'merge', 'split'] },
   { label: 'Comprendre et contrôler', modules: ['ocr', 'smart-split', 'docchat', 'facturx'] },
 ]
 
