@@ -25,6 +25,121 @@ function newCanvas(width: number, height: number): HTMLCanvasElement {
   return canvas
 }
 
+function findBrightRun(values: number[], threshold: number, runLength: number, reverse = false) {
+  const start = reverse ? values.length - 1 : 0
+  const end = reverse ? -1 : values.length
+  const step = reverse ? -1 : 1
+  for (let index = start; index !== end; index += step) {
+    let valid = true
+    for (let offset = 0; offset < runLength; offset++) {
+      const position = index + offset * step
+      if (position < 0 || position >= values.length || values[position] < threshold) {
+        valid = false
+        break
+      }
+    }
+    if (valid) return index
+  }
+  return reverse ? values.length - 1 : 0
+}
+
+/**
+ * Retire les bandes sombres qui peuvent rester après la correction de
+ * perspective de la caméra. La passe ne s'active que si le centre ressemble à
+ * une feuille claire et si la zone supprimée est réellement plus sombre.
+ */
+export function trimDarkCameraBorders(
+  source: HTMLCanvasElement
+): { canvas: HTMLCanvasElement; applied: boolean } {
+  const scale = Math.min(1, CROP_SAMPLE_EDGE / Math.max(source.width, source.height))
+  const sample = newCanvas(source.width * scale, source.height * scale)
+  const ctx = sample.getContext('2d', { willReadFrequently: true })!
+  ctx.drawImage(source, 0, 0, sample.width, sample.height)
+  const { data } = ctx.getImageData(0, 0, sample.width, sample.height)
+  const width = sample.width
+  const height = sample.height
+  const luma = new Uint8Array(width * height)
+  for (let pixel = 0; pixel < luma.length; pixel++) {
+    const offset = pixel * 4
+    luma[pixel] = Math.round(data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114)
+  }
+
+  const meanRect = (left: number, top: number, right: number, bottom: number) => {
+    let total = 0
+    let count = 0
+    for (let y = Math.max(0, top); y < Math.min(height, bottom); y++) {
+      for (let x = Math.max(0, left); x < Math.min(width, right); x++) {
+        total += luma[y * width + x]
+        count++
+      }
+    }
+    return total / Math.max(1, count)
+  }
+
+  const centerLuma = meanRect(
+    Math.round(width * 0.32),
+    Math.round(height * 0.28),
+    Math.round(width * 0.68),
+    Math.round(height * 0.72)
+  )
+  if (centerLuma < 105) return { canvas: source, applied: false }
+  const brightThreshold = Math.min(165, Math.max(62, centerLuma * 0.56))
+
+  const columnRatios = Array.from({ length: width }, (_, x) => {
+    let bright = 0
+    let count = 0
+    for (let y = Math.round(height * 0.08); y < Math.round(height * 0.92); y++) {
+      if (luma[y * width + x] >= brightThreshold) bright++
+      count++
+    }
+    return bright / Math.max(1, count)
+  })
+  const rowRatios = Array.from({ length: height }, (_, y) => {
+    let bright = 0
+    let count = 0
+    for (let x = Math.round(width * 0.1); x < Math.round(width * 0.9); x++) {
+      if (luma[y * width + x] >= brightThreshold) bright++
+      count++
+    }
+    return bright / Math.max(1, count)
+  })
+
+  const runX = Math.max(2, Math.round(width * 0.012))
+  const runY = Math.max(2, Math.round(height * 0.012))
+  let left = findBrightRun(columnRatios, 0.55, runX)
+  let right = findBrightRun(columnRatios, 0.55, runX, true)
+  let top = findBrightRun(rowRatios, 0.55, runY)
+  let bottom = findBrightRun(rowRatios, 0.55, runY, true)
+
+  const darkLimit = Math.min(centerLuma - 28, centerLuma * 0.8)
+  if (left < width * 0.012 || meanRect(0, top, left, bottom + 1) >= darkLimit) left = 0
+  if (right > width * 0.988 || meanRect(right + 1, top, width, bottom + 1) >= darkLimit) right = width - 1
+  if (top < height * 0.012 || meanRect(left, 0, right + 1, top) >= darkLimit) top = 0
+  if (bottom > height * 0.988 || meanRect(left, bottom + 1, right + 1, height) >= darkLimit) bottom = height - 1
+
+  const removesEnough = left > width * 0.018
+    || top > height * 0.018
+    || right < width * 0.982
+    || bottom < height * 0.982
+  const keptRatio = ((right - left + 1) * (bottom - top + 1)) / (width * height)
+  if (!removesEnough || keptRatio < 0.58) return { canvas: source, applied: false }
+
+  const safetyX = Math.max(1, Math.round(width * 0.003))
+  const safetyY = Math.max(1, Math.round(height * 0.003))
+  if (left > 0) left = Math.min(right - 1, left + safetyX)
+  if (right < width - 1) right = Math.max(left + 1, right - safetyX)
+  if (top > 0) top = Math.min(bottom - 1, top + safetyY)
+  if (bottom < height - 1) bottom = Math.max(top + 1, bottom - safetyY)
+
+  const sx = Math.round(left / scale)
+  const sy = Math.round(top / scale)
+  const sw = Math.min(source.width - sx, Math.round((right - left + 1) / scale))
+  const sh = Math.min(source.height - sy, Math.round((bottom - top + 1) / scale))
+  const cropped = newCanvas(sw, sh)
+  cropped.getContext('2d')!.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh)
+  return { canvas: cropped, applied: true }
+}
+
 export async function blobToCanvas(
   blob: Blob,
   rotation = 0,

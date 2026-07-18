@@ -15,7 +15,7 @@ import {
   IconUpload,
   IconX,
 } from '../../components/ui/icons'
-import { blobToCanvas, renderScan, type ScanFilter } from './scannerUtils'
+import { blobToCanvas, renderScan, trimDarkCameraBorders, type ScanFilter } from './scannerUtils'
 import {
   advanceCaptureStability,
   analyzeDocumentCanvas,
@@ -261,7 +261,7 @@ export default function ScannerModule() {
   }, [])
 
   async function addBlobs(
-    items: { blob: Blob; name: string }[],
+    items: { blob: Blob; name: string; precropped?: boolean }[],
     quiet = false,
     filterOverride?: ScanFilter
   ) {
@@ -273,7 +273,7 @@ export default function ScannerModule() {
     setProcessing(true)
     try {
       const added: ScanPage[] = []
-      for (const { blob, name } of images) {
+      for (const { blob, name, precropped } of images) {
         const filter = filterOverride ?? defaultFilter
         const rendered = await renderScan(blob, {
           rotation: 0,
@@ -290,7 +290,7 @@ export default function ScannerModule() {
           height: rendered.height,
           rotation: 0,
           filter,
-          cropApplied: rendered.cropApplied,
+          cropApplied: Boolean(precropped || rendered.cropApplied),
         })
       }
       setPages((current) => [...current, ...added])
@@ -373,9 +373,13 @@ export default function ScannerModule() {
       canvas.height = video.videoHeight
       canvas.getContext('2d')!.drawImage(video, 0, 0)
       const guide = cameraGuideRef.current
-      const corrected = guide.detected && guide.corners
+      const perspectiveCorrected = guide.detected && guide.corners
         ? rectifyDocumentPerspective(canvas, guide.corners)
         : canvas
+      const trimmed = autoCrop
+        ? trimDarkCameraBorders(perspectiveCorrected)
+        : { canvas: perspectiveCorrected, applied: false }
+      const corrected = trimmed.canvas
       const blob = await new Promise<Blob | null>((resolve) => corrected.toBlob(resolve, 'image/jpeg', 0.97))
       if (!blob) {
         toast.error("La photo n'a pas pu être capturée")
@@ -384,7 +388,7 @@ export default function ScannerModule() {
       if (automatic) navigator.vibrate?.(35)
       if (cameraMultipage && (automatic || autoCaptureEnabled)) awaitingNextPageRef.current = true
       const added = await addBlobs(
-        [{ blob, name: `photo-${Date.now()}.jpg` }],
+        [{ blob, name: `photo-${Date.now()}.jpg`, precropped: trimmed.applied }],
         automatic && cameraMultipage,
         cameraFilter
       )
