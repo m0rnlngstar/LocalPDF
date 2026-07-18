@@ -4,6 +4,8 @@ import { exportSegments, parseRanges, type Segment } from './splitExport'
 import { FileDropzone } from '../../components/ui/FileDropzone'
 import { toast } from '../../components/ui/Toast'
 import { IconDownload, IconX } from '../../components/ui/icons'
+import ZoneCropEditor from './ZoneCropEditor'
+import type { CropZone } from './zoneExport'
 
 /**
  * Éclateur : découpe un PDF en plusieurs fichiers.
@@ -27,8 +29,9 @@ interface LoadedDoc {
 export default function SplitModule() {
   const [doc, setDoc] = useState<LoadedDoc | null>(null)
   const [busy, setBusy] = useState(false)
-  const [mode, setMode] = useState<'ranges' | 'each'>('ranges')
+  const [mode, setMode] = useState<'ranges' | 'each' | 'zones'>('ranges')
   const [rangesInput, setRangesInput] = useState('')
+  const [cropZones, setCropZones] = useState<CropZone[]>([])
   const [exporting, setExporting] = useState(false)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
@@ -40,6 +43,7 @@ export default function SplitModule() {
       const bytes = await file.arrayBuffer()
       const pdf = await openPdf(bytes)
       const thumbs: string[] = []
+      setCropZones([])
       setDoc({ name: file.name.replace(/\.pdf$/i, ''), bytes, pageCount: pdf.numPages, thumbs: [] })
       setRangesInput(`1-${pdf.numPages}`)
       // Miniatures rendues progressivement
@@ -66,6 +70,7 @@ export default function SplitModule() {
   // Segments courants selon le mode ; erreur de saisie affichée sous le champ
   const { segments, error } = useMemo((): { segments: Segment[]; error: string | null } => {
     if (!doc) return { segments: [], error: null }
+    if (mode === 'zones') return { segments: [], error: null }
     if (mode === 'each') {
       return {
         segments: Array.from({ length: doc.pageCount }, (_, i) => ({
@@ -131,7 +136,7 @@ export default function SplitModule() {
           onFiles={(files) => void handleFiles(files)}
           className="bg-base-100 shadow-xl py-16"
           title="Déposez le PDF à découper"
-          description="Par plages de pages ou une page par fichier — tout reste dans votre navigateur"
+          description="Par pages ou en découpant plusieurs zones dans une feuille — tout reste dans votre navigateur"
           footer={busy && <span className="loading loading-spinner text-primary" />}
         />
       </div>
@@ -154,6 +159,12 @@ export default function SplitModule() {
           >
             1 page = 1 fichier
           </button>
+          <button
+            className={`tab ${mode === 'zones' ? 'tab-active' : ''}`}
+            onClick={() => setMode('zones')}
+          >
+            Zones dans une page
+          </button>
         </div>
 
         {mode === 'ranges' && (
@@ -168,30 +179,47 @@ export default function SplitModule() {
 
         <span className="text-sm text-base-content/60">
           {doc.name}.pdf · {doc.pageCount} pages →{' '}
-          <span className="font-semibold">{segments.length || '?'} fichier{segments.length > 1 ? 's' : ''}</span>
+          {mode === 'zones' ? (
+            <span className="font-semibold">{cropZones.length} ticket{cropZones.length > 1 ? 's' : ''}</span>
+          ) : (
+            <span className="font-semibold">{segments.length || '?'} fichier{segments.length > 1 ? 's' : ''}</span>
+          )}
         </span>
 
         <div className="ml-auto flex gap-2">
           <button className="btn btn-sm btn-ghost rounded-full gap-1" onClick={() => setDoc(null)}>
             <IconX /> Fermer
           </button>
-          <button
-            className="btn btn-sm btn-primary rounded-full shadow-md gap-1.5"
-            onClick={handleExport}
-            disabled={exporting || segments.length === 0}
-          >
-            {exporting ? <span className="loading loading-spinner loading-xs" /> : <IconDownload />}
-            {segments.length > 1 ? 'Exporter le .zip' : 'Exporter'}
-          </button>
+          {mode !== 'zones' && (
+            <button
+              className="btn btn-sm btn-primary rounded-full shadow-md gap-1.5"
+              onClick={handleExport}
+              disabled={exporting || segments.length === 0}
+            >
+              {exporting ? <span className="loading loading-spinner loading-xs" /> : <IconDownload />}
+              {segments.length > 1 ? 'Exporter le .zip' : 'Exporter'}
+            </button>
+          )}
         </div>
       </div>
 
-      {error && <p className="text-sm text-error">{error}</p>}
-      {progress && (
+      {mode === 'zones' && (
+        <ZoneCropEditor
+          name={doc.name}
+          bytes={doc.bytes}
+          pageCount={doc.pageCount}
+          thumbs={doc.thumbs}
+          zones={cropZones}
+          onZonesChange={setCropZones}
+        />
+      )}
+
+      {mode !== 'zones' && error && <p className="text-sm text-error">{error}</p>}
+      {mode !== 'zones' && progress && (
         <progress className="progress progress-primary w-64" value={progress.done} max={progress.total} />
       )}
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-3">
+      {mode !== 'zones' && <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-3">
         {Array.from({ length: doc.pageCount }, (_, i) => {
           const si = pageSegment[i]
           return (
@@ -216,10 +244,10 @@ export default function SplitModule() {
             </div>
           )
         })}
-      </div>
-      <p className="text-xs text-base-content/50">
+      </div>}
+      {mode !== 'zones' && <p className="text-xs text-base-content/50">
         Le numéro sur chaque page indique le fichier de destination ; les pages grisées ne seront pas exportées.
-      </p>
+      </p>}
     </div>
   )
 }

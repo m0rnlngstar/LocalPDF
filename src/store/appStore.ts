@@ -38,7 +38,7 @@ export const MODULES: ModuleMeta[] = [
   },
   {
     id: 'split', label: 'Découper un PDF', category: 'Organiser', tone: 'emerald',
-    desc: 'Découpez un PDF par plages de pages, ou une page par fichier.',
+    desc: 'Découpez par pages ou isolez plusieurs tickets dans une même feuille.',
   },
   {
     id: 'smart-split', label: 'Découpage intelligent', category: 'IA locale', tone: 'violet', badge: 'IA locale',
