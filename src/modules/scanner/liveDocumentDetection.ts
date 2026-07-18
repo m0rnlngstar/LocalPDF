@@ -26,6 +26,34 @@ export interface LiveDocumentAnalysis {
   sharpness: number
 }
 
+export const AUTO_CAPTURE_STABILITY = 0.82
+
+export interface CaptureStabilityFrame {
+  detected: boolean
+  ready: boolean
+  status: ScanGuideStatus
+  motion: number
+  hadPreviousCorners: boolean
+  lostFrames: number
+}
+
+/** Progression tolérante aux petits mouvements et aux contours manqués brièvement. */
+export function advanceCaptureStability(current: number, frame: CaptureStabilityFrame) {
+  let next = current
+  if (frame.detected && frame.ready) {
+    if (!frame.hadPreviousCorners) next += 0.18
+    else if (frame.motion < 0.045) next += 0.24
+    else if (frame.motion < 0.075) next += 0.1
+    else next -= 0.05
+  } else if (frame.detected) {
+    const stronglyMisframed = frame.status === 'clipped' || frame.status === 'too-far'
+    next -= stronglyMisframed ? 0.16 : 0.07
+  } else {
+    next -= frame.lostFrames <= 4 ? 0.06 : 0.14
+  }
+  return clamp(next, 0, 1)
+}
+
 interface Line {
   slope: number
   intercept: number

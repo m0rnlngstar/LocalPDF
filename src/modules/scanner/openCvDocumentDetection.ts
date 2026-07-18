@@ -108,66 +108,84 @@ export class OpenCvDocumentDetector {
     const blurred = new cv.Mat()
     const edges = new cv.Mat()
     const closed = new cv.Mat()
-    const contours = new cv.MatVector()
-    const hierarchy = new cv.Mat()
+    const thresholded = new cv.Mat()
+    const thresholdClosed = new cv.Mat()
     const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5))
 
     try {
       cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY)
       cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT)
-      cv.Canny(blurred, edges, 45, 150)
-      cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, kernel, new cv.Point(-1, -1), 2)
-      cv.findContours(closed, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
 
       const frameArea = canvas.width * canvas.height
       let bestCorners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null = null
       let bestScore = 0
 
-      for (let index = 0; index < contours.size(); index++) {
-        const contour = contours.get(index)
-        const approx = new cv.Mat()
+      const scanMask = (mask: typeof edges, methodBonus: number) => {
+        const contours = new cv.MatVector()
+        const hierarchy = new cv.Mat()
         try {
-          const contourArea = Math.abs(cv.contourArea(contour))
-          const areaRatio = contourArea / frameArea
-          if (areaRatio < 0.11 || areaRatio > 0.96) continue
+          cv.findContours(mask, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+          for (let index = 0; index < contours.size(); index++) {
+            const contour = contours.get(index)
+            const approx = new cv.Mat()
+            try {
+              const contourArea = Math.abs(cv.contourArea(contour))
+              const areaRatio = contourArea / frameArea
+              if (areaRatio < 0.08 || areaRatio > 0.97) continue
 
-          const perimeter = cv.arcLength(contour, true)
-          cv.approxPolyDP(contour, approx, perimeter * 0.025, true)
-          const points = contourPoints(approx)
-          const isExactQuadrilateral = points.length === 4 && cv.isContourConvex(approx)
-          const orderedPixels = isExactQuadrilateral
-            ? orderCorners(points)
-            : farthestQuadrantCorners(contourPoints(contour), cv.minAreaRect(contour).center)
-          if (!orderedPixels) continue
-          const normalized = orderedPixels.map((point) => ({
-            x: point.x / canvas.width,
-            y: point.y / canvas.height,
-          })) as [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
-          const quadArea = polygonArea(normalized)
-          if (quadArea < 0.11) continue
+              const perimeter = cv.arcLength(contour, true)
+              cv.approxPolyDP(contour, approx, perimeter * 0.03, true)
+              const points = contourPoints(approx)
+              const isExactQuadrilateral = points.length === 4 && cv.isContourConvex(approx)
+              const orderedPixels = isExactQuadrilateral
+                ? orderCorners(points)
+                : farthestQuadrantCorners(contourPoints(contour), cv.minAreaRect(contour).center)
+              if (!orderedPixels) continue
+              const normalized = orderedPixels.map((point) => ({
+                x: point.x / canvas.width,
+                y: point.y / canvas.height,
+              })) as [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
+              const quadArea = polygonArea(normalized)
+              if (quadArea < 0.08) continue
 
-          const nearestEdge = Math.min(...normalized.flatMap((point) => [
-            point.x,
-            point.y,
-            1 - point.x,
-            1 - point.y,
-          ]))
-          const touchesFrame = nearestEdge < 0.006
-          const contourFill = Math.min(1, areaRatio / quadArea)
-          const score = quadArea * 1.7
-            + contourFill * 0.15
-            + Math.min(0.08, nearestEdge)
-            - (touchesFrame ? 0.45 : 0)
-            - (isExactQuadrilateral ? 0 : 0.08)
-          if (score > bestScore) {
-            bestScore = score
-            bestCorners = normalized
+              const nearestEdge = Math.min(...normalized.flatMap((point) => [
+                point.x,
+                point.y,
+                1 - point.x,
+                1 - point.y,
+              ]))
+              const touchesFrame = nearestEdge < 0.006
+              const contourFill = Math.min(1, areaRatio / quadArea)
+              const score = quadArea * 1.7
+                + contourFill * 0.15
+                + Math.min(0.08, nearestEdge)
+                + methodBonus
+                - (touchesFrame ? 0.45 : 0)
+                - (isExactQuadrilateral ? 0 : 0.06)
+              if (score > bestScore) {
+                bestScore = score
+                bestCorners = normalized
+              }
+            } finally {
+              contour.delete()
+              approx.delete()
+            }
           }
         } finally {
-          contour.delete()
-          approx.delete()
+          contours.delete()
+          hierarchy.delete()
         }
       }
+
+      // Les contours Canny fonctionnent bien sur un bureau contrasté.
+      cv.Canny(blurred, edges, 35, 125)
+      cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, kernel, new cv.Point(-1, -1), 2)
+      scanMask(closed, 0)
+
+      // Otsu récupère la feuille quand un bord est peu contrasté ou éclairé de façon inégale.
+      cv.threshold(blurred, thresholded, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+      cv.morphologyEx(thresholded, thresholdClosed, cv.MORPH_CLOSE, kernel, new cv.Point(-1, -1), 1)
+      scanMask(thresholdClosed, 0.04)
 
       return bestCorners ? assessDocumentCorners(canvas, bestCorners) : null
     } finally {
@@ -176,8 +194,8 @@ export class OpenCvDocumentDetector {
       blurred.delete()
       edges.delete()
       closed.delete()
-      contours.delete()
-      hierarchy.delete()
+      thresholded.delete()
+      thresholdClosed.delete()
       kernel.delete()
     }
   }

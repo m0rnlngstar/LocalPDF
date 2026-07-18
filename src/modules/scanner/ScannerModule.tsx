@@ -17,7 +17,9 @@ import {
 } from '../../components/ui/icons'
 import { blobToCanvas, renderScan, type ScanFilter } from './scannerUtils'
 import {
+  advanceCaptureStability,
   analyzeDocumentCanvas,
+  AUTO_CAPTURE_STABILITY,
   rectifyDocumentPerspective,
   type LiveDocumentAnalysis,
   type ScanGuidePoint,
@@ -108,6 +110,18 @@ function cornerMotion(
   return current.reduce((total, point, index) => (
     total + Math.hypot(point.x - previous[index].x, point.y - previous[index].y)
   ), 0) / current.length
+}
+
+function smoothCorners(
+  previous: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null,
+  current: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint],
+  strength = 0.48
+) {
+  if (!previous) return current
+  return current.map((point, index) => ({
+    x: previous[index].x + (point.x - previous[index].x) * strength,
+    y: previous[index].y + (point.y - previous[index].y) * strength,
+  })) as [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint]
 }
 
 const filterLabels: Record<ScanFilter, { label: string; description: string }> = {
@@ -399,8 +413,10 @@ export default function ScannerModule() {
 
     let animationFrame = 0
     let lastAnalysisAt = 0
-    let stableFrames = 0
+    let stabilityScore = 0
+    let lostFrames = 0
     let previousCorners: [ScanGuidePoint, ScanGuidePoint, ScanGuidePoint, ScanGuidePoint] | null = null
+    let lastReliableAnalysis: LiveDocumentAnalysis | null = null
 
     const analyze = (time: number) => {
       const detector = documentDetectorRef.current
@@ -416,28 +432,56 @@ export default function ScannerModule() {
           canvas.height = height
         }
         ctx.drawImage(video, 0, 0, width, height)
-        let analysis = analyzeDocumentCanvas(canvas)
+        let analysis: LiveDocumentAnalysis
         if (detector) {
           try {
-            analysis = detector.analyze(canvas) ?? initialCameraGuide
+            analysis = detector.analyze(canvas) ?? analyzeDocumentCanvas(canvas)
           } catch (error) {
             console.warn('Analyse OpenCV interrompue, détecteur léger utilisé', error)
             documentDetectorRef.current = null
             setCameraDetectorState('fallback')
+            analysis = analyzeDocumentCanvas(canvas)
+          }
+        } else {
+          analysis = analyzeDocumentCanvas(canvas)
+        }
+
+        const detectedThisFrame = Boolean(analysis.detected && analysis.corners)
+        const hadPreviousCorners = Boolean(previousCorners)
+        let motion = Number.POSITIVE_INFINITY
+        if (analysis.corners) {
+          const smoothed = smoothCorners(previousCorners, analysis.corners)
+          motion = cornerMotion(previousCorners, smoothed)
+          analysis = { ...analysis, corners: smoothed }
+          previousCorners = smoothed
+          lastReliableAnalysis = analysis
+          lostFrames = 0
+        } else {
+          lostFrames++
+          if (lastReliableAnalysis?.corners && lostFrames <= 4) {
+            analysis = {
+              ...lastReliableAnalysis,
+              ready: false,
+              message: 'Continuez — le document reste suivi',
+            }
+          } else if (lostFrames > 4) {
+            previousCorners = null
+            lastReliableAnalysis = null
           }
         }
         const overlayCorners = analysis.corners ? mapCornersToVideo(video, analysis.corners) : null
         if (awaitingNextPageRef.current) {
-          missingDocumentFramesRef.current = analysis.detected && analysis.ready
+          missingDocumentFramesRef.current = detectedThisFrame && analysis.ready
             ? 0
             : missingDocumentFramesRef.current + 1
           if (missingDocumentFramesRef.current >= 3) {
             awaitingNextPageRef.current = false
             missingDocumentFramesRef.current = 0
             previousCorners = null
+            lastReliableAnalysis = null
+            stabilityScore = 0
           } else {
-            stableFrames = 0
-            previousCorners = analysis.corners
+            stabilityScore = 0
             setCameraGuide({
               ...analysis,
               overlayCorners,
@@ -448,28 +492,32 @@ export default function ScannerModule() {
         }
 
         if (!awaitingNextPageRef.current) {
-          const motion = cornerMotion(previousCorners, analysis.corners)
-          if (analysis.ready && motion < 0.018) {
-            stableFrames = Math.min(7, stableFrames + 1)
-          } else if (analysis.ready && !previousCorners) {
-            stableFrames = 1
-          } else {
-            stableFrames = Math.max(0, stableFrames - 2)
-          }
-          previousCorners = analysis.corners
-          const stability = stableFrames / 7
-          const stable = analysis.ready && stability >= 1
-          const message = analysis.ready
+          stabilityScore = advanceCaptureStability(stabilityScore, {
+            detected: detectedThisFrame,
+            ready: analysis.ready,
+            status: analysis.status,
+            motion,
+            hadPreviousCorners,
+            lostFrames,
+          })
+          const stable = detectedThisFrame
+            && analysis.ready
+            && stabilityScore >= AUTO_CAPTURE_STABILITY
+          const message = !detectedThisFrame && analysis.corners
+            ? 'Continuez — je garde les coins en mémoire'
+            : analysis.ready
             ? stable
               ? autoCaptureEnabled ? 'Parfait — capture automatique' : 'Parfait — vous pouvez capturer'
-              : 'Document détecté — ne bougez plus'
+              : 'Document détecté — restez comme ça'
             : analysis.message
-          setCameraGuide({ ...analysis, overlayCorners, stability, message })
+          setCameraGuide({ ...analysis, overlayCorners, stability: stabilityScore, message })
 
           if (stable && autoCaptureEnabled && Date.now() - lastAutoCaptureRef.current > 2400) {
             lastAutoCaptureRef.current = Date.now()
-            stableFrames = 0
+            stabilityScore = 0
             previousCorners = null
+            lastReliableAnalysis = null
+            lostFrames = 0
             void captureFrameRef.current(true)
           }
         }
