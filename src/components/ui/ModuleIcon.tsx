@@ -55,6 +55,15 @@ const paths: Record<ModuleId, React.ReactNode> = {
       <path d="m20 2 .45 1.05L21.5 3.5l-1.05.45L20 5l-.45-1.05-1.05-.45 1.05-.45Z" />
     </>
   ),
+  'smart-merge': (
+    <>
+      <path d="M8 6h5a5 5 0 0 1 5 5v6" />
+      <path d="m15 14 3 3 3-3" />
+      <path d="M8 18h3" />
+      <path d="M3 6h1M3 12h8" />
+      <path d="m19 2 .45 1.05L20.5 3.5l-1.05.45L19 5l-.45-1.05L17.5 3.5l1.05-.45Z" />
+    </>
+  ),
   ocr: (
     <>
       <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />

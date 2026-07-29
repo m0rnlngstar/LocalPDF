@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type ModuleId =
   | 'home' | 'scanner' | 'create' | 'edit' | 'merge' | 'split'
-  | 'smart-split' | 'ocr' | 'facturx' | 'docchat'
+  | 'smart-split' | 'smart-merge' | 'ocr' | 'facturx' | 'docchat'
 
 export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
 
@@ -43,6 +43,10 @@ export const MODULES: ModuleMeta[] = [
   {
     id: 'smart-split', label: 'Découpage intelligent', category: 'IA locale', tone: 'violet', badge: 'IA locale',
     desc: 'Retrouvez les documents individuels d’un scan en vrac : OCR, motifs, pages blanches et IA locale.',
+  },
+  {
+    id: 'smart-merge', label: 'Fusion intelligente', category: 'IA locale', tone: 'cyan', badge: 'IA locale',
+    desc: 'Réassemblez des fichiers scannés dans le bon ordre : numéros de page, chaînage visuel et IA locale.',
   },
   {
     id: 'ocr', label: 'Reconnaissance OCR', category: 'Analyser', tone: 'amber',

@@ -110,7 +110,7 @@ function computeInkRatio(canvas: HTMLCanvasElement): number {
 }
 
 /** aHash 8×8 : 64 bits, 1 si le pixel est plus sombre que la moyenne. */
-function computePhash(source: HTMLCanvasElement): Uint8Array {
+export function computePhash(source: HTMLCanvasElement): Uint8Array {
   const c = document.createElement('canvas')
   c.width = 8
   c.height = 8

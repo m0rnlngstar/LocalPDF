@@ -60,6 +60,40 @@ function readAsDataUrl(file: File): Promise<string> {
   })
 }
 
+/**
+ * Lit des fichiers PDF/image en `MergeItem[]`. Utilisé par le Fusionneur, et
+ * réutilisé tel quel par la Fusion intelligente pour partager la même logique
+ * de lecture (pas de fichiers texte/autres formats).
+ */
+export async function readFilesAsMergeItems(files: File[]): Promise<MergeItem[]> {
+  const newItems: MergeItem[] = []
+  for (const file of files) {
+    if (file.type === 'application/pdf') {
+      const bytes = await file.arrayBuffer()
+      const doc = await openPdf(bytes)
+      newItems.push({
+        id: newId(),
+        name: file.name,
+        kind: 'pdf',
+        bytes,
+        pageCount: doc.numPages,
+      })
+    } else if (file.type.startsWith('image/')) {
+      const dataUrl = await readAsDataUrl(file)
+      const dims = await loadImageDims(dataUrl)
+      newItems.push({
+        id: newId(),
+        name: file.name,
+        kind: 'image',
+        dataUrl,
+        ...dims,
+        pageCount: 1,
+      })
+    }
+  }
+  return newItems
+}
+
 export const useMergeStore = create<MergeState>((set, get) => {
   function persist() {
     save({ items: get().items } satisfies PersistedState)
@@ -81,31 +115,7 @@ export const useMergeStore = create<MergeState>((set, get) => {
     },
 
     addFiles: async (files) => {
-      const newItems: MergeItem[] = []
-      for (const file of files) {
-        if (file.type === 'application/pdf') {
-          const bytes = await file.arrayBuffer()
-          const doc = await openPdf(bytes)
-          newItems.push({
-            id: newId(),
-            name: file.name,
-            kind: 'pdf',
-            bytes,
-            pageCount: doc.numPages,
-          })
-        } else if (file.type.startsWith('image/')) {
-          const dataUrl = await readAsDataUrl(file)
-          const dims = await loadImageDims(dataUrl)
-          newItems.push({
-            id: newId(),
-            name: file.name,
-            kind: 'image',
-            dataUrl,
-            ...dims,
-            pageCount: 1,
-          })
-        }
-      }
+      const newItems = await readFilesAsMergeItems(files)
       set({ items: [...get().items, ...newItems] })
       persist()
     },
