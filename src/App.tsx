@@ -11,6 +11,7 @@ const moduleComponents: Record<ModuleId, React.LazyExoticComponent<React.Compone
   scanner: lazy(() => import('./modules/scanner/ScannerModule')),
   docchat: lazy(() => import('./modules/docchat/DocChatModule')),
   create: lazy(() => import('./modules/create/CreateModule')),
+  convert: lazy(() => import('./modules/convert/ConvertModule')),
   edit: lazy(() => import('./modules/edit/EditModule')),
   merge: lazy(() => import('./modules/merge/MergeModule')),
   split: lazy(() => import('./modules/split/SplitModule')),
@@ -38,7 +39,7 @@ function LocalBadge() {
 
 const NAV_GROUPS: { label: string; modules: ModuleId[] }[] = [
   { label: 'Espace de travail', modules: ['home'] },
-  { label: 'Créer et organiser', modules: ['scanner', 'create', 'edit', 'merge', 'split'] },
+  { label: 'Créer et organiser', modules: ['scanner', 'create', 'convert', 'edit', 'merge', 'split'] },
   { label: 'Comprendre et contrôler', modules: ['ocr', 'smart-split', 'smart-merge', 'docchat', 'facturx'] },
 ]
 

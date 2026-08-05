@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type ModuleId =
-  | 'home' | 'scanner' | 'create' | 'edit' | 'merge' | 'split'
+  | 'home' | 'scanner' | 'create' | 'convert' | 'edit' | 'merge' | 'split'
   | 'smart-split' | 'smart-merge' | 'ocr' | 'facturx' | 'docchat'
 
 export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
@@ -27,6 +27,10 @@ export const MODULES: ModuleMeta[] = [
   {
     id: 'create', label: 'Créateur PDF', category: 'Créer', tone: 'violet',
     desc: 'Créez un PDF de zéro : texte, images, formes, filigrane, multi-pages.',
+  },
+  {
+    id: 'convert', label: 'Convertisseur PDF', category: 'Créer', tone: 'amber', badge: 'Nouveau',
+    desc: 'Transformez JPG, PNG, HEIC, DOCX, TXT ou Markdown en un seul PDF, dans l’ordre voulu.',
   },
   {
     id: 'edit', label: 'Éditeur / Annotateur', category: 'Créer', tone: 'blue', badge: 'Populaire',

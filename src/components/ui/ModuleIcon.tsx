@@ -26,6 +26,13 @@ const paths: Record<ModuleId, React.ReactNode> = {
       <path d="M12 12v6M9 15h6" />
     </>
   ),
+  convert: (
+    <>
+      <path d="M7 3h6l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+      <path d="M13 3v5h5" />
+      <path d="m9 13.5 2.5 2.5L16 11" />
+    </>
+  ),
   edit: (
     <>
       <path d="M12 20h9" />
