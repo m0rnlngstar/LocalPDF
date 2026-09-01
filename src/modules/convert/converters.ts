@@ -106,12 +106,12 @@ export async function convertFile(file: File): Promise<ConvertItem> {
 
     if (ext === 'heic' || ext === 'heif' || file.type === 'image/heic' || file.type === 'image/heif') {
       const pages = await convertHeicFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length }
+      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, isImage: true }
     }
 
     if (file.type.startsWith('image/') || IMAGE_EXTS.has(ext)) {
       const pages = await convertImageFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length }
+      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, isImage: true }
     }
 
     if (

@@ -15,8 +15,11 @@ import type { ConvertItem } from './types'
 import { openPdf } from '../../lib/pdfjs'
 import { buildFinalPdf, downloadBytes } from './exportPdf'
 import { FileDropzone } from '../../components/ui/FileDropzone'
+import { InfoDialog } from '../../components/ui/InfoDialog'
 import { toast } from '../../components/ui/Toast'
 import { IconAlertTriangle, IconDownload, IconPlus, IconX } from '../../components/ui/icons'
+
+const OCR_KEY = 'convert-ocr'
 
 const ACCEPT = [
   'application/pdf',
@@ -243,6 +246,8 @@ export default function ConvertModule() {
   const { items, hydrated, hydrate, addFiles, moveItem, reset } = useConvertStore()
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [ocr, setOcr] = useState(localStorage.getItem(OCR_KEY) === 'on')
+  const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number } | null>(null)
   const addInputRef = useRef<HTMLInputElement>(null)
   const previewRef = useRef<HTMLDialogElement>(null)
   // Remonte l'aperçu à chaque ouverture pour relancer le rendu sur l'état courant
@@ -286,9 +291,13 @@ export default function ConvertModule() {
 
   async function handleExport() {
     setExporting(true)
+    setOcrProgress(null)
     try {
       const ready = useConvertStore.getState().items.filter((i) => i.status === 'ready')
-      const bytes = await buildFinalPdf(ready)
+      const bytes = await buildFinalPdf(ready, {
+        ocr,
+        onOcrProgress: (done, total) => setOcrProgress({ done, total }),
+      })
       downloadBytes(bytes, 'document-converti.pdf')
       toast.success('PDF exporté !')
     } catch (err) {
@@ -296,6 +305,7 @@ export default function ConvertModule() {
       toast.error("Échec de l'export PDF")
     } finally {
       setExporting(false)
+      setOcrProgress(null)
     }
   }
 
@@ -325,6 +335,7 @@ export default function ConvertModule() {
 
   const readyCount = items.filter((i) => i.status === 'ready').length
   const totalPages = items.reduce((n, i) => n + i.pageCount, 0)
+  const hasImages = items.some((i) => i.isImage)
 
   return (
     <div className="flex flex-col gap-3">
@@ -387,6 +398,48 @@ export default function ConvertModule() {
         Glissez les cartes pour définir l'ordre final du document. Les fichiers texte/DOCX sont rendus en
         images (mise en page fidèle) pour préserver leur apparence.
       </p>
+
+      {hasImages && (
+        <div className="card bg-base-100 border border-base-300/50 shadow-sm">
+          <div className="card-body p-3 flex-row flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                role="switch"
+                className="toggle toggle-sm toggle-primary"
+                checked={ocr}
+                onChange={(e) => {
+                  setOcr(e.target.checked)
+                  localStorage.setItem(OCR_KEY, e.target.checked ? 'on' : 'off')
+                }}
+                disabled={exporting}
+              />
+              Rendre les images reconnaissables (OCR)
+            </label>
+            <InfoDialog title="🔍 OCR des images">
+              <p>
+                Quand cette option est activée, chaque page issue d'une image ou d'une photo
+                (JPG, PNG, HEIC…) est analysée par reconnaissance de texte (français + anglais,
+                entièrement dans votre navigateur) avant d'être ajoutée au PDF.
+              </p>
+              <p>
+                Le texte reconnu est superposé <strong>invisible</strong> sur l'image d'origine :
+                le PDF final garde exactement le même aspect visuel, mais devient sélectionnable
+                et cherchable (Ctrl+F, copier-coller).
+              </p>
+              <p className="text-base-content/60">
+                Cela ralentit la génération du PDF, surtout avec beaucoup d'images. Les fichiers
+                DOCX, TXT et Markdown ne sont pas concernés (leur texte est déjà connu).
+              </p>
+            </InfoDialog>
+            {exporting && ocr && ocrProgress && (
+              <span className="text-xs text-base-content/50 ml-auto">
+                OCR : page {ocrProgress.done} / {ocrProgress.total}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={items.map((i) => i.id)} strategy={rectSortingStrategy}>

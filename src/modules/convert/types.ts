@@ -21,6 +21,8 @@ export interface ConvertItem {
   bytes?: ArrayBuffer
   pages?: RenderedPage[]
   pageCount: number
+  /** true si les pages proviennent d'une image/photo source (candidates à l'OCR). */
+  isImage?: boolean
 }
 
 export function newId(): string {
