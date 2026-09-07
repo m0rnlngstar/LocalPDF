@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type ModuleId =
-  | 'home' | 'scanner' | 'create' | 'convert' | 'edit' | 'merge' | 'split'
+  | 'home' | 'scanner' | 'create' | 'convert' | 'edit' | 'merge' | 'split' | 'compress'
   | 'smart-split' | 'smart-merge' | 'ocr' | 'facturx' | 'docchat'
 
 export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
@@ -43,6 +43,10 @@ export const MODULES: ModuleMeta[] = [
   {
     id: 'split', label: 'Découper un PDF', category: 'Organiser', tone: 'emerald',
     desc: 'Découpez par pages ou isolez plusieurs tickets dans une même feuille.',
+  },
+  {
+    id: 'compress', label: 'Compresser un PDF', category: 'Organiser', tone: 'rose', badge: 'Nouveau',
+    desc: 'Réduisez le poids d’un PDF en ré-encodant ses images, sans rien envoyer sur un serveur.',
   },
   {
     id: 'smart-split', label: 'Découpage intelligent', category: 'IA locale', tone: 'violet', badge: 'IA locale',

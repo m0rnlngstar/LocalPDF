@@ -55,6 +55,14 @@ const paths: Record<ModuleId, React.ReactNode> = {
       <path d="m8.5 7.5 3.5 3.3M8.5 16.5 21 4M14 14l7 6" />
     </>
   ),
+  compress: (
+    <>
+      <path d="M7 3h6l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+      <path d="M13 3v5h5" />
+      <path d="M9 11.5 12 14l3-2.5" />
+      <path d="M9 17.5 12 15l3 2.5" />
+    </>
+  ),
   'smart-split': (
     <>
       <path d="M9.5 4.5A3.5 3.5 0 0 0 6 8v.5a3.5 3.5 0 0 0 0 7V16a3.5 3.5 0 0 0 3.5 3.5" />
