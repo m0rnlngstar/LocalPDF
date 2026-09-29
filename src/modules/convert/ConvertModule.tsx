@@ -31,49 +31,12 @@ const ACCEPT = [
   'text/markdown', '.md', '.markdown',
 ].join(',')
 
-/** Miniature de la première page d'un PDF source (cache module pour éviter les re-rendus). */
-const thumbCache = new Map<string, Promise<string>>()
-
-function pdfFirstPageThumb(item: ConvertItem): Promise<string> {
-  let p = thumbCache.get(item.id)
-  if (!p) {
-    p = (async () => {
-      const doc = await openPdf(item.bytes!)
-      const page = await doc.getPage(1)
-      const vp0 = page.getViewport({ scale: 1 })
-      const viewport = page.getViewport({ scale: 130 / vp0.width })
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.ceil(viewport.width)
-      canvas.height = Math.ceil(viewport.height)
-      await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
-      return canvas.toDataURL()
-    })()
-    thumbCache.set(item.id, p)
-  }
-  return p
-}
-
 function extBadge(name: string): string {
   const m = /\.([a-z0-9]+)$/i.exec(name)
   return m ? m[1].toUpperCase() : '?'
 }
 
 function ItemThumb({ item }: { item: ConvertItem }) {
-  const [src, setSrc] = useState<string | null>(item.kind === 'pages' ? (item.pages?.[0]?.dataUrl ?? null) : null)
-
-  useEffect(() => {
-    if (item.kind !== 'pdf' || item.status !== 'ready') return
-    let cancelled = false
-    pdfFirstPageThumb(item)
-      .then((url) => {
-        if (!cancelled) setSrc(url)
-      })
-      .catch(console.error)
-    return () => {
-      cancelled = true
-    }
-  }, [item])
-
   if (item.status === 'converting') {
     return (
       <div className="flex items-center justify-center bg-base-200" style={{ width: 130, height: 170 }}>
@@ -95,10 +58,12 @@ function ItemThumb({ item }: { item: ConvertItem }) {
     )
   }
 
-  return src ? (
+  return item.thumb ? (
     <img
-      src={src}
+      src={item.thumb}
       alt=""
+      loading="lazy"
+      decoding="async"
       className="border border-base-300 shadow-sm bg-white"
       style={{ width: 130, height: 170, objectFit: 'contain' }}
       draggable={false}
@@ -178,7 +143,7 @@ function PreviewDialog({
           if (cancelled) return
           if (item.kind === 'pages' && item.pages) {
             for (const pg of item.pages) {
-              urls.push(pg.dataUrl)
+              urls.push(pg.thumb)
               setThumbs([...urls])
             }
             continue
@@ -193,9 +158,11 @@ function PreviewDialog({
             canvas.width = Math.ceil(viewport.width)
             canvas.height = Math.ceil(viewport.height)
             await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
-            urls.push(canvas.toDataURL())
+            urls.push(canvas.toDataURL('image/jpeg', 0.75))
+            canvas.width = 0
             setThumbs([...urls])
           }
+          void doc.loadingTask.destroy()
         }
       } catch (err) {
         console.error(err)
@@ -244,7 +211,7 @@ function PreviewDialog({
 }
 
 export default function ConvertModule() {
-  const { items, hydrated, hydrate, addFiles, moveItem, reset, discardSaved } = useConvertStore()
+  const { items, hydrated, hydrate, addFiles, moveItem, reset, discardSaved, progress } = useConvertStore()
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [ocr, setOcr] = useState(localStorage.getItem(OCR_KEY) === 'on')
@@ -364,7 +331,14 @@ export default function ConvertModule() {
         <span className="text-sm text-base-content/60">
           {items.length} fichier{items.length > 1 ? 's' : ''} · {totalPages} page{totalPages > 1 ? 's' : ''}
         </span>
-        {busy && <span className="loading loading-spinner loading-xs" />}
+        {progress ? (
+          <span className="flex items-center gap-2 text-xs text-base-content/60">
+            <progress className="progress progress-primary w-28" value={progress.done} max={progress.total} />
+            Conversion {progress.done} / {progress.total}
+          </span>
+        ) : (
+          busy && <span className="loading loading-spinner loading-xs" />
+        )}
         <div className="ml-auto flex gap-2">
           <button
             className="btn btn-sm btn-ghost rounded-full"
@@ -388,7 +362,7 @@ export default function ConvertModule() {
           <button
             className="btn btn-sm btn-primary rounded-full shadow-md gap-1.5"
             onClick={handleExport}
-            disabled={exporting || readyCount === 0}
+            disabled={exporting || readyCount === 0 || progress !== null}
           >
             {exporting ? <span className="loading loading-spinner loading-xs" /> : <IconDownload />}
             {separate && readyCount > 1 ? `Générer ${readyCount} PDF` : 'Générer le PDF'}

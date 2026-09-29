@@ -1,4 +1,5 @@
 import type { RenderedPage } from './types'
+import { canvasToPage, releaseCanvas } from './raster'
 
 /** 96 dpi (CSS px) / 72 dpi (points PDF). */
 const PT_TO_PX = 4 / 3
@@ -77,12 +78,9 @@ export async function renderHtmlToPages(html: string, page: PageBox = A4_PAGE): 
         0, i * pageCanvasH, fullCanvas.width, sliceH,
         0, 0, fullCanvas.width, sliceH
       )
-      pages.push({
-        dataUrl: pageCanvas.toDataURL('image/png'),
-        width: page.widthPt,
-        height: page.heightPt,
-      })
+      pages.push(await canvasToPage(pageCanvas, page.widthPt, page.heightPt))
     }
+    releaseCanvas(fullCanvas)
     return pages
   } finally {
     container.remove()

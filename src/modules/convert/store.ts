@@ -9,6 +9,8 @@ interface PersistedState {
 
 interface ConvertState extends PersistedState {
   hydrated: boolean
+  /** Avancement de la file de conversion (null quand elle est vide). */
+  progress: { done: number; total: number } | null
   hydrate: () => Promise<void>
   reset: () => void
   /** Supprime la session sauvegardée (même si elle n'a pas encore été chargée) et recharge. */
@@ -18,8 +20,20 @@ interface ConvertState extends PersistedState {
   removeItem: (id: string) => void
 }
 
-const SESSION_KEY = 'convert-module'
+// v2 : pages stockées en Blob JPEG. L'ancienne clé (data URL PNG, très lourde) est purgée.
+const SESSION_KEY = 'convert-module-v2'
+const LEGACY_SESSION_KEY = 'convert-module'
 const save = debouncedSaver(SESSION_KEY)
+
+/**
+ * File de conversion : un seul fichier traité à la fois, quel que soit le
+ * nombre d'ajouts, avec une pause entre deux fichiers pour laisser l'interface
+ * respirer. Évite de saturer la RAM avec des dizaines de rendus simultanés.
+ */
+let queue: { placeholderId: string; file: File }[] = []
+let worker: Promise<void> | null = null
+
+const yieldToBrowser = () => new Promise<void>((r) => setTimeout(r, 0))
 
 export const useConvertStore = create<ConvertState>((set, get) => {
   function persist() {
@@ -29,9 +43,11 @@ export const useConvertStore = create<ConvertState>((set, get) => {
   return {
     items: [],
     hydrated: false,
+    progress: null,
 
     hydrate: async () => {
       if (get().hydrated) return
+      void clearSession(LEGACY_SESSION_KEY)
       const saved = await loadSession<PersistedState>(SESSION_KEY)
       // Une conversion interrompue (onglet fermé) ne reprendra jamais : on marque ces cartes en erreur
       const items = saved?.items?.map((it) =>
@@ -41,7 +57,8 @@ export const useConvertStore = create<ConvertState>((set, get) => {
     },
 
     reset: () => {
-      set({ items: [] })
+      queue = []
+      set({ items: [], progress: null })
       persist()
     },
 
@@ -51,13 +68,10 @@ export const useConvertStore = create<ConvertState>((set, get) => {
     },
 
     addFiles: async (files) => {
-      // Insère tout de suite des cartes "en conversion" pour un retour visuel
-      // immédiat, puis les remplace une à une : un DOCX ou un HEIC volumineux
-      // peut prendre plusieurs secondes à traiter.
-      const placeholders = files.map((f) => ({
-        placeholderId: newId(),
-        file: f,
-      }))
+      // Cartes "en attente" tout de suite pour un retour visuel immédiat,
+      // remplacées une à une par la file de conversion.
+      const placeholders = files.map((file) => ({ placeholderId: newId(), file }))
+      const progress = get().progress ?? { done: 0, total: 0 }
       set({
         items: [
           ...get().items,
@@ -69,15 +83,30 @@ export const useConvertStore = create<ConvertState>((set, get) => {
             pageCount: 0,
           })),
         ],
+        progress: { done: progress.done, total: progress.total + files.length },
       })
+      queue.push(...placeholders)
 
-      for (const { placeholderId, file } of placeholders) {
-        const result = await convertFile(file)
-        set({
-          items: get().items.map((it) => (it.id === placeholderId ? { ...result, id: placeholderId } : it)),
-        })
-      }
-      persist()
+      worker ??= (async () => {
+        while (queue.length > 0) {
+          const { placeholderId, file } = queue.shift()!
+          // Carte retirée entre-temps : inutile de la convertir
+          if (get().items.some((it) => it.id === placeholderId)) {
+            const result = await convertFile(file)
+            set({
+              items: get().items.map((it) => (it.id === placeholderId ? { ...result, id: placeholderId } : it)),
+            })
+            persist()
+          }
+          const p = get().progress
+          if (p) set({ progress: { ...p, done: p.done + 1 } })
+          await yieldToBrowser()
+        }
+        set({ progress: null })
+      })().finally(() => {
+        worker = null
+      })
+      await worker
     },
 
     moveItem: (from, to) => {

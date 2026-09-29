@@ -2,8 +2,10 @@
 
 /** Une page déjà rendue en image, prête à être posée sur une page PDF de même taille. */
 export interface RenderedPage {
-  /** Data URL PNG. */
-  dataUrl: string
+  /** Image JPEG de la page (Blob : pas de data URL géante en mémoire ni dans IndexedDB). */
+  blob: Blob
+  /** Miniature JPEG légère (data URL) pour les cartes et l'aperçu. */
+  thumb: string
   /** Dimensions de la page en points PDF (1/72"). */
   width: number
   height: number
@@ -21,6 +23,8 @@ export interface ConvertItem {
   bytes?: ArrayBuffer
   pages?: RenderedPage[]
   pageCount: number
+  /** Miniature de la première page (data URL légère). */
+  thumb?: string
   /** true si les pages proviennent d'une image/photo source (candidates à l'OCR). */
   isImage?: boolean
 }

@@ -1,14 +1,6 @@
 import type { ConvertItem } from './types'
 import { downloadBytes } from '../create/exportPdf'
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
-}
+import { pageToCanvas, releaseCanvas } from './raster'
 
 export interface BuildPdfOptions {
   /** Ajoute une couche de texte invisible (OCR) sur les pages issues d'images. */
@@ -39,22 +31,20 @@ export async function buildFinalPdf(
       for (const p of copied) out.addPage(p)
     } else if (item.kind === 'pages' && item.pages) {
       for (const pg of item.pages) {
-        const bytes = await fetch(pg.dataUrl).then((r) => r.arrayBuffer())
-        const image = await out.embedPng(bytes)
+        // JPEG intégré tel quel par pdf-lib (pas de décodage, contrairement au PNG)
+        const image = await out.embedJpg(await pg.blob.arrayBuffer())
         const page = out.addPage([pg.width, pg.height])
         page.drawImage(image, { x: 0, y: 0, width: pg.width, height: pg.height })
 
         if (ocr && item.isImage && font) {
           const { recognizeCanvas } = await import('../../lib/ocr')
           const { preprocessForOcr } = await import('../../lib/preprocess')
-          const img = await loadImage(pg.dataUrl)
-          const raw = document.createElement('canvas')
-          raw.width = img.naturalWidth
-          raw.height = img.naturalHeight
-          raw.getContext('2d')!.drawImage(img, 0, 0)
+          const raw = await pageToCanvas(pg)
           const canvas = preprocessForOcr(raw, { binarize: true })
+          releaseCanvas(raw)
           const pxPerPt = canvas.width / pg.width
           const { words } = await recognizeCanvas(canvas)
+          releaseCanvas(canvas)
           for (const w of words) {
             const fontSize = Math.max(4, (w.y1 - w.y0) / pxPerPt)
             page.drawText(w.text, {
@@ -123,7 +113,8 @@ export async function exportSeparatePdfs(
   const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
   for (const f of files) zip.file(f.name, f.bytes)
-  const blob = await zip.generateAsync({ type: 'blob' })
+  // Pas de recompression : les PDF (images JPEG) ne gagneraient presque rien, pour beaucoup de CPU
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' })
   downloadBytes(new Uint8Array(await blob.arrayBuffer()), zipName, 'application/zip')
   return files.length
 }

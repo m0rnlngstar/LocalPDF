@@ -1,65 +1,44 @@
 import { openPdf } from '../../lib/pdfjs'
 import { renderHtmlToPages, A4_PAGE } from './htmlToPages'
 import { newId, type ConvertItem, type RenderedPage } from './types'
+import { blobToPage, makeThumb, releaseCanvas } from './raster'
 
 function extOf(name: string): string {
   const m = /\.([a-z0-9]+)$/i.exec(name)
   return m ? m[1].toLowerCase() : ''
 }
 
-function readAsDataUrl(file: File | Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
-}
-
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-/** Rasterise une image déjà décodée en une page PNG, mise à l'échelle A4 max. */
-function rasterizeImage(img: HTMLImageElement): RenderedPage {
-  const canvas = document.createElement('canvas')
-  canvas.width = img.naturalWidth
-  canvas.height = img.naturalHeight
-  const ctx = canvas.getContext('2d')!
-  // Fond blanc : les images transparentes (PNG) sont posées sur une page blanche.
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(img, 0, 0)
-  const ratio = Math.min(1, A4_PAGE.widthPt / img.naturalWidth)
-  return {
-    dataUrl: canvas.toDataURL('image/png'),
-    width: img.naturalWidth * ratio,
-    height: img.naturalHeight * ratio,
-  }
-}
-
-async function convertImageFile(file: File): Promise<RenderedPage[]> {
-  const dataUrl = await readAsDataUrl(file)
-  const img = await loadImage(dataUrl)
-  return [rasterizeImage(img)]
+async function convertImageFile(file: Blob): Promise<RenderedPage[]> {
+  return [await blobToPage(file, A4_PAGE.widthPt)]
 }
 
 async function convertHeicFile(file: File): Promise<RenderedPage[]> {
   const { default: heic2any } = await import('heic2any')
   const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 })
-  const blob = Array.isArray(result) ? result[0] : result
-  const dataUrl = await readAsDataUrl(blob)
-  const img = await loadImage(dataUrl)
-  return [rasterizeImage(img)]
+  return convertImageFile(Array.isArray(result) ? result[0] : result)
+}
+
+/** Miniature de la première page d'un PDF source ; le document pdf.js est libéré ensuite. */
+async function inspectPdf(bytes: ArrayBuffer): Promise<{ pageCount: number; thumb: string }> {
+  const doc = await openPdf(bytes)
+  try {
+    const page = await doc.getPage(1)
+    const vp0 = page.getViewport({ scale: 1 })
+    const viewport = page.getViewport({ scale: 260 / vp0.width })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(viewport.width)
+    canvas.height = Math.ceil(viewport.height)
+    await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
+    const thumb = makeThumb(canvas)
+    releaseCanvas(canvas)
+    return { pageCount: doc.numPages, thumb }
+  } finally {
+    void doc.loadingTask.destroy()
+  }
 }
 
 async function convertDocxFile(file: File): Promise<RenderedPage[]> {
@@ -100,18 +79,18 @@ export async function convertFile(file: File): Promise<ConvertItem> {
   try {
     if (file.type === 'application/pdf' || ext === 'pdf') {
       const bytes = await file.arrayBuffer()
-      const doc = await openPdf(bytes)
-      return { id, name, kind: 'pdf', status: 'ready', bytes, pageCount: doc.numPages }
+      const { pageCount, thumb } = await inspectPdf(bytes)
+      return { id, name, kind: 'pdf', status: 'ready', bytes, pageCount, thumb }
     }
 
     if (ext === 'heic' || ext === 'heif' || file.type === 'image/heic' || file.type === 'image/heif') {
       const pages = await convertHeicFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, isImage: true }
+      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb, isImage: true }
     }
 
     if (file.type.startsWith('image/') || IMAGE_EXTS.has(ext)) {
       const pages = await convertImageFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, isImage: true }
+      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb, isImage: true }
     }
 
     if (
@@ -119,17 +98,17 @@ export async function convertFile(file: File): Promise<ConvertItem> {
       file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) {
       const pages = await convertDocxFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length }
+      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb }
     }
 
     if (ext === 'md' || ext === 'markdown' || file.type === 'text/markdown') {
       const pages = await convertMarkdownFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length }
+      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb }
     }
 
     if (ext === 'txt' || file.type === 'text/plain') {
       const pages = await convertTxtFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length }
+      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb }
     }
 
     throw new Error('Format non pris en charge')
