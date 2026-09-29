@@ -1,26 +1,9 @@
-import { lazy, Suspense, useEffect } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { Suspense, useEffect } from 'react'
 import { MODULES, useAppStore, type ModuleId } from './store/appStore'
 import { ThemeController } from './components/ui/ThemeController'
 import { ToastContainer } from './components/ui/Toast'
 import { BrandMark, ModuleIcon } from './components/ui/ModuleIcon'
-
-// Chaque module est chargé en lazy : on ne paie pdf.js/tesseract qu'à l'usage.
-const moduleComponents: Record<ModuleId, React.LazyExoticComponent<React.ComponentType>> = {
-  home: lazy(() => import('./modules/home/Dashboard')),
-  scanner: lazy(() => import('./modules/scanner/ScannerModule')),
-  docchat: lazy(() => import('./modules/docchat/DocChatModule')),
-  create: lazy(() => import('./modules/create/CreateModule')),
-  convert: lazy(() => import('./modules/convert/ConvertModule')),
-  edit: lazy(() => import('./modules/edit/EditModule')),
-  merge: lazy(() => import('./modules/merge/MergeModule')),
-  split: lazy(() => import('./modules/split/SplitModule')),
-  compress: lazy(() => import('./modules/compress/CompressModule')),
-  'smart-split': lazy(() => import('./modules/smart-split/SmartSplitModule')),
-  'smart-merge': lazy(() => import('./modules/smart-merge/SmartMergeModule')),
-  ocr: lazy(() => import('./modules/ocr/OcrModule')),
-  facturx: lazy(() => import('./modules/facturx/FacturXModule')),
-}
+import { moduleComponents, preloadModule } from './modules/registry'
 
 function LocalBadge() {
   return (
@@ -65,6 +48,11 @@ export default function App() {
       : `${activeMeta.label} · LocalPDF`
   }, [activeMeta.label, activeModule])
 
+  async function goToModule(id: ModuleId) {
+    await preloadModule(id)
+    setActiveModule(id)
+  }
+
   return (
     <div className="drawer lg:drawer-open min-h-screen app-shell">
       <input id="nav-drawer" type="checkbox" className="drawer-toggle" />
@@ -98,20 +86,14 @@ export default function App() {
         </header>
 
         <main id="main-content" className="flex-1 overflow-x-hidden app-main-surface">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeModule}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.18 }}
-              className="h-full module-surface"
-            >
-              <Suspense fallback={<LoadingModule />}>
-                <Active />
-              </Suspense>
-            </motion.div>
-          </AnimatePresence>
+          {/* Pas d'AnimatePresence ici : combinée à un enfant chargé en lazy, elle
+              bloque indéfiniment le montage du nouveau module (page figée sur
+              l'ancien contenu). Le remontage via `key` + un fondu CSS suffit. */}
+          <Suspense fallback={<LoadingModule />}>
+            <div key={activeModule} className="h-full module-surface module-fade-in">
+              <Active />
+            </div>
+          </Suspense>
         </main>
       </div>
 
@@ -139,8 +121,10 @@ export default function App() {
                         <button
                           className={`nav-item ${isActive ? 'is-active' : ''}`}
                           aria-current={isActive ? 'page' : undefined}
+                          onMouseEnter={() => preloadModule(m.id)}
+                          onFocus={() => preloadModule(m.id)}
                           onClick={() => {
-                            setActiveModule(m.id)
+                            void goToModule(m.id)
                             const drawer = document.getElementById('nav-drawer') as HTMLInputElement | null
                             if (drawer) drawer.checked = false
                           }}

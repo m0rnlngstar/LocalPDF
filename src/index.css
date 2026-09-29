@@ -204,6 +204,19 @@ h6 {
   z-index: 1;
 }
 
+.module-fade-in {
+  animation: module-fade-in 0.18s ease-out;
+}
+
+@keyframes module-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-fade-in { animation: none; }
+}
+
 .module-loading {
   width: min(100%, 64rem);
   margin: 2rem auto;

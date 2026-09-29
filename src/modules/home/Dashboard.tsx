@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { MODULES, useAppStore, type ModuleId } from '../../store/appStore'
 import { BrandMark, ModuleIcon } from '../../components/ui/ModuleIcon'
+import { preloadModule } from '../registry'
 
 /**
  * Page d'accueil : tableau de bord des outils, une carte cliquable par module.
@@ -19,7 +20,8 @@ export default function Dashboard() {
     )
   }, [query, tools])
 
-  function openModule(id: ModuleId) {
+  async function openModule(id: ModuleId) {
+    await preloadModule(id)
     setActiveModule(id)
   }
 
@@ -40,12 +42,12 @@ export default function Dashboard() {
             Même l’OCR et l’IA s’exécutent dans votre navigateur.
           </p>
           <div className="hero-actions">
-            <button className="btn btn-primary hero-primary-action" onClick={() => openModule('scanner')}>
+            <button className="btn btn-primary hero-primary-action" onClick={() => void openModule('scanner')}>
               <ModuleIcon module="scanner" />
               Scanner un document
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><path d="m7 4 6 6-6 6" /></svg>
             </button>
-            <button className="btn hero-secondary-action" onClick={() => openModule('merge')}>
+            <button className="btn hero-secondary-action" onClick={() => void openModule('merge')}>
               <ModuleIcon module="merge" />
               Fusionner des fichiers
             </button>
@@ -98,7 +100,9 @@ export default function Dashboard() {
           <button
             key={m.id}
             className={`tool-card tone-${m.tone}`}
-            onClick={() => setActiveModule(m.id)}
+            onMouseEnter={() => preloadModule(m.id)}
+            onFocus={() => preloadModule(m.id)}
+            onClick={() => void openModule(m.id)}
           >
             <div className="tool-card-topline">
               <span className="tool-icon"><ModuleIcon module={m.id} /></span>
