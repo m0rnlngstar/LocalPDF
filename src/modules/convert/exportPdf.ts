@@ -1,4 +1,5 @@
 import type { ConvertItem } from './types'
+import { downloadBytes } from '../create/exportPdf'
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -75,4 +76,56 @@ export async function buildFinalPdf(
   return out.save()
 }
 
-export { downloadBytes } from '../create/exportPdf'
+/** Nom de sortie : même nom que le fichier source, extension remplacée par .pdf. */
+function pdfName(name: string): string {
+  return name.replace(/\.[^./\\]+$/, '') + '.pdf'
+}
+
+/**
+ * Convertit chaque élément prêt en un PDF distinct, nommé comme son fichier source.
+ * Un seul fichier → téléchargement PDF direct ; plusieurs → archive .zip.
+ */
+export async function exportSeparatePdfs(
+  items: ConvertItem[],
+  zipName: string,
+  { ocr = false, onOcrProgress }: BuildPdfOptions = {}
+): Promise<number> {
+  const ready = items.filter((i) => i.status === 'ready')
+  if (ready.length === 0) return 0
+
+  const ocrTotal = ocr
+    ? ready.reduce((n, it) => n + (it.kind === 'pages' && it.isImage ? it.pages!.length : 0), 0)
+    : 0
+  let ocrOffset = 0
+  const used = new Set<string>()
+  const files: { name: string; bytes: Uint8Array }[] = []
+
+  for (const item of ready) {
+    const bytes = await buildFinalPdf([item], {
+      ocr,
+      onOcrProgress: (done) => onOcrProgress?.(ocrOffset + done, ocrTotal),
+    })
+    if (ocr && item.kind === 'pages' && item.isImage) ocrOffset += item.pages!.length
+
+    // Déduplique les noms identiques (ex. photo.jpg et photo.png → photo.pdf, photo (2).pdf)
+    const base = pdfName(item.name)
+    let name = base
+    for (let n = 2; used.has(name.toLowerCase()); n++) name = base.replace(/\.pdf$/, ` (${n}).pdf`)
+    used.add(name.toLowerCase())
+    files.push({ name, bytes })
+  }
+
+  if (files.length === 1) {
+    downloadBytes(files[0].bytes, files[0].name)
+    return 1
+  }
+
+  const { default: JSZip } = await import('jszip')
+  const zip = new JSZip()
+  for (const f of files) zip.file(f.name, f.bytes)
+  const blob = await zip.generateAsync({ type: 'blob' })
+  downloadBytes(new Uint8Array(await blob.arrayBuffer()), zipName, 'application/zip')
+  return files.length
+}
+
+export { downloadBytes }

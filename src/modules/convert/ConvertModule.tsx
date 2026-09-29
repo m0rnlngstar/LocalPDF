@@ -13,13 +13,14 @@ import { CSS } from '@dnd-kit/utilities'
 import { useConvertStore } from './store'
 import type { ConvertItem } from './types'
 import { openPdf } from '../../lib/pdfjs'
-import { buildFinalPdf, downloadBytes } from './exportPdf'
+import { buildFinalPdf, downloadBytes, exportSeparatePdfs } from './exportPdf'
 import { FileDropzone } from '../../components/ui/FileDropzone'
 import { InfoDialog } from '../../components/ui/InfoDialog'
 import { toast } from '../../components/ui/Toast'
 import { IconAlertTriangle, IconDownload, IconPlus, IconX } from '../../components/ui/icons'
 
 const OCR_KEY = 'convert-ocr'
+const SEPARATE_KEY = 'convert-separate'
 
 const ACCEPT = [
   'application/pdf',
@@ -247,6 +248,8 @@ export default function ConvertModule() {
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [ocr, setOcr] = useState(localStorage.getItem(OCR_KEY) === 'on')
+  // Un PDF par fichier source (même nom, extension .pdf) au lieu d'un document unique
+  const [separate, setSeparate] = useState(localStorage.getItem(SEPARATE_KEY) === 'on')
   const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number } | null>(null)
   const addInputRef = useRef<HTMLInputElement>(null)
   const previewRef = useRef<HTMLDialogElement>(null)
@@ -294,12 +297,15 @@ export default function ConvertModule() {
     setOcrProgress(null)
     try {
       const ready = useConvertStore.getState().items.filter((i) => i.status === 'ready')
-      const bytes = await buildFinalPdf(ready, {
-        ocr,
-        onOcrProgress: (done, total) => setOcrProgress({ done, total }),
-      })
-      downloadBytes(bytes, 'document-converti.pdf')
-      toast.success('PDF exporté !')
+      const opts = { ocr, onOcrProgress: (done: number, total: number) => setOcrProgress({ done, total }) }
+      if (separate) {
+        const n = await exportSeparatePdfs(ready, 'documents-convertis.zip', opts)
+        toast.success(n > 1 ? `${n} PDF exportés (archive .zip)` : 'PDF exporté !')
+      } else {
+        const bytes = await buildFinalPdf(ready, opts)
+        downloadBytes(bytes, 'document-converti.pdf')
+        toast.success('PDF exporté !')
+      }
     } catch (err) {
       console.error(err)
       toast.error("Échec de l'export PDF")
@@ -326,7 +332,7 @@ export default function ConvertModule() {
           onFiles={(files) => void handleFiles(files)}
           className="bg-base-100 shadow-xl py-16"
           title="Déposez vos fichiers ici"
-          description="Images (JPG, PNG, WEBP, HEIC…), DOCX, TXT ou Markdown : tout sera assemblé en un seul PDF, dans l'ordre de votre choix."
+          description="Images (JPG, PNG, WEBP, HEIC…), DOCX, TXT ou Markdown : assemblés en un seul PDF ou convertis chacun en PDF séparé."
           footer={busy && <span className="loading loading-spinner text-primary" />}
         />
       </div>
@@ -376,7 +382,7 @@ export default function ConvertModule() {
             disabled={exporting || readyCount === 0}
           >
             {exporting ? <span className="loading loading-spinner loading-xs" /> : <IconDownload />}
-            Générer le PDF
+            {separate && readyCount > 1 ? `Générer ${readyCount} PDF` : 'Générer le PDF'}
           </button>
         </div>
       </div>
@@ -393,6 +399,21 @@ export default function ConvertModule() {
           e.target.value = ''
         }}
       />
+
+      <label className="flex items-center gap-2 text-sm w-fit">
+        <input
+          type="checkbox"
+          role="switch"
+          className="toggle toggle-sm toggle-primary"
+          checked={separate}
+          onChange={(e) => {
+            setSeparate(e.target.checked)
+            localStorage.setItem(SEPARATE_KEY, e.target.checked ? 'on' : 'off')
+          }}
+          disabled={exporting}
+        />
+        Un PDF par fichier (même nom, en .pdf — regroupés dans un .zip)
+      </label>
 
       <p className="text-xs text-base-content/50">
         Glissez les cartes pour définir l'ordre final du document. Les fichiers texte/DOCX sont rendus en
