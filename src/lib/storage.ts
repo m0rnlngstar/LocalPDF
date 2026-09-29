@@ -39,6 +39,21 @@ export async function clearSession(key: string): Promise<void> {
   await db.delete('sessions', key)
 }
 
+/** Supprime les sessions de tous les modules (fichiers en cours, pages converties…). */
+export async function clearAllSessions(): Promise<void> {
+  const db = await getDb()
+  await db.clear('sessions')
+}
+
+/**
+ * Vide le cache de travail puis recharge la page, pour purger aussi les états
+ * déjà chargés en mémoire. Les préférences (thème, options) sont conservées.
+ */
+export async function clearCacheAndReload(): Promise<void> {
+  await clearAllSessions()
+  window.location.reload()
+}
+
 /** Sauvegarde débouncée pour ne pas marteler IndexedDB à chaque frappe/drag. */
 export function debouncedSaver(key: string, delayMs = 800) {
   let timer: ReturnType<typeof setTimeout> | undefined

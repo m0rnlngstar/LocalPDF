@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { debouncedSaver, loadSession } from '../../lib/storage'
+import { clearSession, debouncedSaver, loadSession } from '../../lib/storage'
 import { convertFile } from './converters'
 import { newId, type ConvertItem } from './types'
 
@@ -11,6 +11,8 @@ interface ConvertState extends PersistedState {
   hydrated: boolean
   hydrate: () => Promise<void>
   reset: () => void
+  /** Supprime la session sauvegardée (même si elle n'a pas encore été chargée) et recharge. */
+  discardSaved: () => Promise<void>
   addFiles: (files: File[]) => Promise<void>
   moveItem: (from: number, to: number) => void
   removeItem: (id: string) => void
@@ -31,12 +33,21 @@ export const useConvertStore = create<ConvertState>((set, get) => {
     hydrate: async () => {
       if (get().hydrated) return
       const saved = await loadSession<PersistedState>(SESSION_KEY)
-      set({ hydrated: true, ...(saved?.items?.length ? { items: saved.items } : {}) })
+      // Une conversion interrompue (onglet fermé) ne reprendra jamais : on marque ces cartes en erreur
+      const items = saved?.items?.map((it) =>
+        it.status === 'converting' ? { ...it, status: 'error' as const, error: 'Conversion interrompue' } : it
+      )
+      set({ hydrated: true, ...(items?.length ? { items } : {}) })
     },
 
     reset: () => {
       set({ items: [] })
       persist()
+    },
+
+    discardSaved: async () => {
+      await clearSession(SESSION_KEY)
+      window.location.reload()
     },
 
     addFiles: async (files) => {

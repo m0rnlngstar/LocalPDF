@@ -4,6 +4,7 @@ import { ThemeController } from './components/ui/ThemeController'
 import { ToastContainer } from './components/ui/Toast'
 import { BrandMark, ModuleIcon } from './components/ui/ModuleIcon'
 import { moduleComponents, preloadModule } from './modules/registry'
+import { clearCacheAndReload } from './lib/storage'
 
 function LocalBadge() {
   return (
@@ -153,6 +154,18 @@ export default function App() {
               <p>Aucun transfert vers un serveur.</p>
             </div>
           </div>
+
+          <button
+            className="btn btn-ghost btn-xs rounded-full mx-4 mb-4 text-base-content/60"
+            title="Supprime les fichiers et travaux en cours sauvegardés dans ce navigateur"
+            onClick={() => {
+              if (window.confirm('Vider le cache ? Tous les fichiers et travaux en cours de tous les outils seront supprimés.')) {
+                void clearCacheAndReload()
+              }
+            }}
+          >
+            Vider le cache
+          </button>
         </aside>
       </div>
 

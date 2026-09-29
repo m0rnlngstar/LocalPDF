@@ -244,7 +244,7 @@ function PreviewDialog({
 }
 
 export default function ConvertModule() {
-  const { items, hydrated, hydrate, addFiles, moveItem, reset } = useConvertStore()
+  const { items, hydrated, hydrate, addFiles, moveItem, reset, discardSaved } = useConvertStore()
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [ocr, setOcr] = useState(localStorage.getItem(OCR_KEY) === 'on')
@@ -317,8 +317,17 @@ export default function ConvertModule() {
 
   if (!hydrated) {
     return (
-      <div className="flex justify-center items-center h-64">
+      <div className="flex flex-col justify-center items-center gap-4 h-64">
         <span className="loading loading-spinner loading-lg text-primary" />
+        <p className="text-sm text-base-content/60">Restauration de la session précédente…</p>
+        <button
+          className="btn btn-sm btn-ghost rounded-full"
+          onClick={() => {
+            if (window.confirm('Abandonner la session précédente du convertisseur ?')) void discardSaved()
+          }}
+        >
+          <IconX /> Abandonner et repartir de zéro
+        </button>
       </div>
     )
   }
