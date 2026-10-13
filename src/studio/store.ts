@@ -28,6 +28,8 @@ export interface ToolOptions {
   stampText: string
   stampColor: string
   inkColor: string
+  /** Bordure des nouvelles zones de texte (null = sans bordure). */
+  textBorder: string | null
   /** Surlignage : s'aligner sur le texte détecté (sinon rectangle libre). */
   snapToText: boolean
 }
@@ -112,6 +114,7 @@ const DEFAULT_TOOL_OPTIONS: ToolOptions = {
   stampText: 'APPROUVÉ',
   stampColor: '#dc2626',
   inkColor: '#1d4ed8',
+  textBorder: null,
   snapToText: true,
 }
 

@@ -121,6 +121,16 @@ export function Toolbar() {
             </select>
           </>
         )}
+        {tool === 'text' && (
+          <label className="studio-inline-check" title="Ajoute un cadre coloré autour des nouvelles zones de texte">
+            <input
+              type="checkbox" className="checkbox checkbox-xs" checked={!!opts.textBorder}
+              onChange={(e) => setOpts({ textBorder: e.target.checked ? opts.strokeColor : null })}
+            />
+            Bordure
+            {opts.textBorder && <ColorWell size="sm" value={opts.textBorder} onChange={(textBorder) => setOpts({ textBorder })} title="Couleur de la bordure" />}
+          </label>
+        )}
         {(tool === 'text' || tool === 'callout') && (
           <>
             <ColorWell size="sm" value={opts.textColor} onChange={(textColor) => setOpts({ textColor })} title="Couleur du texte" />

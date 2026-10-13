@@ -63,7 +63,13 @@ export interface TextAnn extends BaseAnn {
   align?: 'left' | 'center' | 'right'
   /** Fond opaque (texte de correction posé sur un ancien texte). */
   background?: string
+  /** Bordure colorée autour de la zone (absente = pas de cadre). */
+  border?: string
+  borderWidth?: number
 }
+
+/** Marge entre le texte et sa bordure / son fond (points). */
+export const TEXT_FRAME_PAD = 3
 
 /**
  * Bulle : zone de texte reliée par une flèche au point visé (tx, ty, en
@@ -78,6 +84,8 @@ export interface CalloutAnn extends BaseAnn {
   color: string
   /** Couleur du cadre et de la flèche. */
   stroke: string
+  /** Épaisseur du cadre et de la flèche (1,2 par défaut). */
+  strokeWidth?: number
   /** Fond de la zone (absent = transparent). */
   background?: string
   tx: number

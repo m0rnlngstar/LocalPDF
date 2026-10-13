@@ -6,7 +6,7 @@ import type Konva from 'konva'
 import { useStudio } from '../store'
 import { CANVAS_FONTS } from '../../lib/fonts'
 import { getPageTextItems, loadImage, textRectsInZone } from '../render'
-import { CALLOUT_PAD, displaySize, newId, type Annotation, type StudioPage } from '../types'
+import { CALLOUT_PAD, TEXT_FRAME_PAD, displaySize, newId, type Annotation, type StudioPage } from '../types'
 import { calloutAnchor, calloutHeight, cssFont, longestLine } from '../textMeasure'
 import { toast } from '../../components/ui/Toast'
 import { PageBitmap } from './PageBitmap'
@@ -225,10 +225,18 @@ const AnnShape = memo(function AnnShape({
             lineHeight={1.15}
             wrap="word"
             sceneFunc={(context, shape) => {
-              // Fond opaque (correction de texte) dessiné sous le texte, à sa taille réelle
+              // Fond et bordure dessinés à la taille réelle du texte (suivent le redimensionnement)
+              const pad = ann.border ? TEXT_FRAME_PAD : 0
+              const w = shape.width() + pad * 2
+              const h = shape.height() + pad * 2
               if (ann.background) {
                 context.fillStyle = ann.background
-                context.fillRect(0, 0, shape.width(), shape.height())
+                context.fillRect(-pad, -pad, w, h)
+              }
+              if (ann.border) {
+                context.strokeStyle = ann.border
+                context.lineWidth = ann.borderWidth ?? 1.5
+                context.strokeRect(-pad, -pad, w, h)
               }
               ;(shape as Konva.Text)._sceneFunc(context)
             }}
@@ -244,8 +252,8 @@ const AnnShape = memo(function AnnShape({
             <Arrow
               name="callout-arrow"
               points={[anchor.x, anchor.y, ann.tx, ann.ty]}
-              stroke={ann.stroke} fill={ann.stroke} strokeWidth={1.5}
-              pointerLength={7} pointerWidth={7} lineCap="round"
+              stroke={ann.stroke} fill={ann.stroke} strokeWidth={(ann.strokeWidth ?? 1.2) * 1.25}
+              pointerLength={Math.max(7, (ann.strokeWidth ?? 1.2) * 4)} pointerWidth={Math.max(7, (ann.strokeWidth ?? 1.2) * 4)} lineCap="round"
               listening={interactive} hitStrokeWidth={12}
               onClick={select} onTap={select}
             />
@@ -253,7 +261,7 @@ const AnnShape = memo(function AnnShape({
           <Group {...common} onTransform={liveResize} onTransformEnd={liveResizeEnd}>
             <Rect
               name="box" width={ann.width} height={h}
-              fill={ann.background ?? 'rgba(255,255,255,0.01)'} stroke={ann.stroke} strokeWidth={1.2} cornerRadius={3}
+              fill={ann.background ?? 'rgba(255,255,255,0.01)'} stroke={ann.stroke} strokeWidth={ann.strokeWidth ?? 1.2} cornerRadius={3}
             />
             <Text
               name="content"
@@ -463,6 +471,7 @@ export const PageCanvas = memo(function PageCanvas({
       addAnnotation(page.id, {
         id, type: 'text', x: p.x, y: p.y - opts.fontSize * 0.6, width: 220, text: '',
         fontSize: opts.fontSize, color: opts.textColor, fontFamily: 'Helvetica',
+        ...(opts.textBorder ? { border: opts.textBorder, borderWidth: 1.5 } : {}),
       })
       setTool('select')
       // Différé : sinon le focus par défaut du mousedown refermerait la saisie

@@ -176,6 +176,21 @@ function PropertiesPanel() {
             </label>
             {ann.background && <ColorWell size="sm" value={ann.background} onChange={(background) => set({ background })} title="Couleur de fond" />}
           </Row>
+          <Row label="Bordure">
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox" className="checkbox checkbox-xs" checked={!!ann.border}
+                onChange={(e) => set(e.target.checked ? { border: ann.color === '#111111' ? '#2563eb' : ann.color, borderWidth: ann.borderWidth ?? 1.5 } : { border: undefined })}
+              />
+              Cadre
+            </label>
+            {ann.border && (
+              <>
+                <ColorWell size="sm" value={ann.border} onChange={(border) => set({ border })} title="Couleur de la bordure" />
+                <NumberInput value={ann.borderWidth ?? 1.5} min={0.5} max={10} step={0.5} onChange={(borderWidth) => set({ borderWidth })} />
+              </>
+            )}
+          </Row>
         </>
       )}
 
@@ -194,6 +209,7 @@ function PropertiesPanel() {
           <Row label="Taille"><NumberInput value={ann.fontSize} min={6} max={48} onChange={(fontSize) => set({ fontSize })} /></Row>
           <Row label="Texte"><ColorWell size="sm" value={ann.color} onChange={(color) => set({ color })} title="Couleur du texte" /></Row>
           <Row label="Cadre et flèche"><ColorWell size="sm" value={ann.stroke} onChange={(stroke) => set({ stroke })} title="Couleur du cadre et de la flèche" /></Row>
+          <Row label="Épaisseur"><NumberInput value={ann.strokeWidth ?? 1.2} min={0.5} max={8} step={0.5} onChange={(strokeWidth) => set({ strokeWidth })} /></Row>
           <Row label="Fond">
             <label className="flex items-center gap-2 text-xs">
               <input type="checkbox" className="checkbox checkbox-xs" checked={!!ann.background} onChange={(e) => set({ background: e.target.checked ? '#ffffff' : undefined })} />

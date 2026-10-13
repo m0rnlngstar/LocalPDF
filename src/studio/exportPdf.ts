@@ -9,7 +9,7 @@ import { compressPdf, type CompressLevel } from '../lib/compress'
 import { getPageTextItems, renderPage } from './render'
 import { calloutAnchor } from './textMeasure'
 import {
-  annBounds, displaySize, totalRotation, ANN_LABELS, CALLOUT_PAD,
+  annBounds, displaySize, totalRotation, ANN_LABELS, CALLOUT_PAD, TEXT_FRAME_PAD,
   type Annotation, type StudioPage, type Watermark,
 } from './types'
 
@@ -160,10 +160,14 @@ async function drawAnnotation(out: PDFDocument, page: PDFPage, H: number, ann: A
       const font = await getFont(ann)
       const text = safeText(font, ann.text)
       const lines = wrapText(text, font, ann.fontSize, ann.width)
-      if (ann.background) {
+      if (ann.background || ann.border) {
+        // Même cadre qu'à l'écran : marge autour du texte quand il y a une bordure
+        const pad = ann.border ? TEXT_FRAME_PAD : 2
+        const h = lines.length * ann.fontSize * 1.15
         page.drawRectangle({
-          x: ann.x - 2, y: H - ann.y - lines.length * ann.fontSize * 1.15 - 2,
-          width: ann.width + 4, height: lines.length * ann.fontSize * 1.15 + 4, color: color(ann.background),
+          x: ann.x - pad, y: H - ann.y - h - pad, width: ann.width + pad * 2, height: h + pad * 2,
+          ...(ann.background ? { color: color(ann.background) } : {}),
+          ...(ann.border ? { borderColor: color(ann.border), borderWidth: ann.borderWidth ?? 1.5 } : {}),
         })
       }
       lines.forEach((line, i) => {
@@ -186,19 +190,21 @@ async function drawAnnotation(out: PDFDocument, page: PDFPage, H: number, ann: A
       if (anchor) {
         const start = { x: anchor.x, y: H - anchor.y }
         const end = { x: ann.tx, y: H - ann.ty }
-        page.drawLine({ start, end, thickness: 1.5, color: color(ann.stroke), lineCap: LineCapStyle.Round })
+        const sw = (ann.strokeWidth ?? 1.2) * 1.25
+        const head = Math.max(8, (ann.strokeWidth ?? 1.2) * 4)
+        page.drawLine({ start, end, thickness: sw, color: color(ann.stroke), lineCap: LineCapStyle.Round })
         const angle = Math.atan2(end.y - start.y, end.x - start.x)
         for (const side of [-1, 1]) {
           const a = angle + Math.PI - side * (Math.PI / 7)
           page.drawLine({
-            start: end, end: { x: end.x + 8 * Math.cos(a), y: end.y + 8 * Math.sin(a) },
-            thickness: 1.5, color: color(ann.stroke), lineCap: LineCapStyle.Round,
+            start: end, end: { x: end.x + head * Math.cos(a), y: end.y + head * Math.sin(a) },
+            thickness: sw, color: color(ann.stroke), lineCap: LineCapStyle.Round,
           })
         }
       }
       page.drawRectangle({
         x: ann.x, y: H - ann.y - h, width: ann.width, height: h,
-        borderColor: color(ann.stroke), borderWidth: 1.2,
+        borderColor: color(ann.stroke), borderWidth: ann.strokeWidth ?? 1.2,
         ...(ann.background ? { color: color(ann.background) } : {}),
       })
       lines.forEach((line, i) => {
