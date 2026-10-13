@@ -3,7 +3,7 @@ import type { ModuleId } from '../../store/appStore'
 
 type IconProps = SVGProps<SVGSVGElement> & { module: ModuleId }
 
-const paths: Record<ModuleId, React.ReactNode> = {
+const paths: Record<string, React.ReactNode> = {
   home: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="2" />

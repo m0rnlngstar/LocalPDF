@@ -1,6 +1,6 @@
 import { PDFDocument, type PDFPage } from 'pdf-lib'
 import JSZip from 'jszip'
-import { downloadBytes } from '../create/exportPdf'
+import { downloadBytes } from '../../lib/pdfExport'
 
 export interface CropZone {
   id: string

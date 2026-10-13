@@ -1,7 +1,8 @@
-import { openPdf } from '../../lib/pdfjs'
+import { openPdf } from '../pdfjs'
 import { renderHtmlToPages, A4_PAGE } from './htmlToPages'
 import { newId, type ConvertItem, type RenderedPage } from './types'
 import { blobToPage, heifImageToPage, makeThumb, releaseCanvas } from './raster'
+import { convertTiff, jp2ToPdf, sniffFormat } from './formats'
 
 function extOf(name: string): string {
   const m = /\.([a-z0-9]+)$/i.exec(name)
@@ -78,7 +79,14 @@ async function convertTxtFile(file: File): Promise<RenderedPage[]> {
   return renderHtmlToPages(html)
 }
 
-const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'])
+/** Images décodées nativement par le navigateur. */
+const IMAGE_EXTS = new Set([
+  'jpg', 'jpeg', 'jpe', 'jfif', 'pjpeg', 'pjp', 'png', 'apng', 'webp', 'gif', 'bmp', 'dib',
+  'svg', 'avif', 'ico', 'cur', 'jxl',
+])
+const TIFF_EXTS = new Set(['tif', 'tiff'])
+const HEIF_EXTS = new Set(['heic', 'heif', 'hif', 'heics', 'heifs'])
+const JP2_EXTS = new Set(['jp2', 'j2k', 'jpf', 'jpx', 'jpm', 'j2c'])
 
 /** Convertit un fichier source en un `ConvertItem` prêt à être assemblé dans le PDF final. */
 export async function convertFile(file: File): Promise<ConvertItem> {
@@ -87,20 +95,55 @@ export async function convertFile(file: File): Promise<ConvertItem> {
   const ext = extOf(name)
 
   try {
-    if (file.type === 'application/pdf' || ext === 'pdf') {
+    // Le contenu prime sur l'extension (fichiers mal nommés ou sans extension)
+    const fmt = await sniffFormat(file)
+    const imageItem = (pages: RenderedPage[]): ConvertItem =>
+      ({ id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb, isImage: true })
+
+    if (fmt === 'pdf' || (!fmt && (file.type === 'application/pdf' || ext === 'pdf'))) {
       const bytes = await file.arrayBuffer()
       const { pageCount, thumb } = await inspectPdf(bytes)
       return { id, name, kind: 'pdf', status: 'ready', bytes, pageCount, thumb }
     }
 
-    if (ext === 'heic' || ext === 'heif' || file.type === 'image/heic' || file.type === 'image/heif') {
-      const pages = await convertHeicFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb, isImage: true }
+    if (fmt === 'jp2' || (!fmt && JP2_EXTS.has(ext))) {
+      // JPEG 2000 : encapsulé sans perte dans un PDF, décodé par pdf.js
+      const bytes = await jp2ToPdf(file, A4_PAGE.widthPt)
+      const { pageCount, thumb } = await inspectPdf(bytes)
+      return { id, name, kind: 'pdf', status: 'ready', bytes, pageCount, thumb, isImage: true }
     }
 
-    if (file.type.startsWith('image/') || IMAGE_EXTS.has(ext)) {
-      const pages = await convertImageFile(file)
-      return { id, name, kind: 'pages', status: 'ready', pages, pageCount: pages.length, thumb: pages[0]?.thumb, isImage: true }
+    if (fmt === 'tiff' || (!fmt && TIFF_EXTS.has(ext))) {
+      return imageItem(await convertTiff(file, A4_PAGE.widthPt))
+    }
+
+    if (fmt === 'heif' || (!fmt && (HEIF_EXTS.has(ext) || file.type === 'image/heic' || file.type === 'image/heif'))) {
+      return imageItem(await convertHeicFile(file))
+    }
+
+    if (fmt === 'avif') {
+      try {
+        return imageItem(await convertImageFile(file))
+      } catch {
+        // Navigateur sans décodeur AVIF : libheif sait aussi lire ce conteneur
+        return imageItem(await convertHeicFile(file))
+      }
+    }
+
+    if (fmt === 'jxl') {
+      try {
+        return imageItem(await convertImageFile(file))
+      } catch {
+        throw new Error('JPEG XL non pris en charge par ce navigateur : convertissez-le en JPG ou PNG')
+      }
+    }
+
+    if (
+      (fmt && fmt !== 'zip') ||
+      file.type.startsWith('image/') ||
+      IMAGE_EXTS.has(ext)
+    ) {
+      return imageItem(await convertImageFile(file))
     }
 
     if (
