@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib'
 import JSZip from 'jszip'
-import { downloadBytes } from '../create/exportPdf'
+import { downloadBytes } from '../../lib/pdfExport'
 
 /**
  * Export de segments d'un PDF : un fichier par segment.

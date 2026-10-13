@@ -25,3 +25,9 @@ dist-ssr
 
 # Fichiers exemples locaux
 *.heic
+
+# Ressources pdf.js copiées depuis node_modules (scripts/copy-pdfjs-assets.mjs)
+public/pdfjs
+
+# PDF de test déposés à la racine (données clients : ne jamais commiter)
+/*.pdf

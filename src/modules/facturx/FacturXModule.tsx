@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { takeHandoff } from '../../studio/handoff'
 import { FileDropzone } from '../../components/ui/FileDropzone'
 import { InfoDialog } from '../../components/ui/InfoDialog'
 import { toast } from '../../components/ui/Toast'
@@ -122,6 +123,19 @@ export default function FacturXModule() {
     }
   }, [data?.currency])
   const fmt = (v: number | null) => (v === null ? '—' : money.format(v))
+
+  // Document transmis par l'éditeur (menu « Outils avancés »)
+
+  useEffect(() => {
+
+    const files = takeHandoff('facturx')
+
+    if (files?.length) void handleFiles(files)
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+  }, [])
+
 
   async function handleFiles(files: File[]) {
     const file = files[0]

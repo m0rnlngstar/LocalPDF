@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { getOcrQuality, recognizeCanvas, type OcrWord } from '../../lib/ocr'
 import { preprocessForOcr } from '../../lib/preprocess'
-import { downloadBytes } from '../create/exportPdf'
+import { downloadBytes } from '../../lib/pdfExport'
+import { openInStudio } from '../../studio/handoff'
 import { toast } from '../../components/ui/Toast'
 import {
   IconChevronLeft,
@@ -669,7 +670,7 @@ export default function ScannerModule() {
     }
   }
 
-  async function buildPdf(searchable: boolean) {
+  async function buildPdf(searchable: boolean, target: 'download' | 'studio' = 'download') {
     if (!pages.length || exporting || ocrRunning) return
     setExporting(true)
     try {
@@ -723,6 +724,10 @@ export default function ScannerModule() {
         }
       }
 
+      if (target === 'studio') {
+        await openInStudio(await doc.save(), safeFilename(documentName))
+        return
+      }
       const suffix = searchable ? '-ocr.pdf' : '.pdf'
       downloadBytes(await doc.save(), `${safeFilename(documentName)}${suffix}`)
       toast.success(searchable ? 'PDF recherchable créé' : 'PDF scan créé')
@@ -1140,6 +1145,9 @@ export default function ScannerModule() {
               <IconDownload /> Texte
             </button>
           )}
+          <button className="btn btn-sm btn-ghost" onClick={() => void buildPdf(false, 'studio')} disabled={processing || exporting || ocrRunning} title="Annoter, compléter ou fusionner le scan dans l'éditeur">
+            Ouvrir dans l’éditeur
+          </button>
           <button className="btn btn-sm btn-soft" onClick={() => void buildPdf(false)} disabled={processing || exporting || ocrRunning}>
             <IconDownload /> PDF scan
           </button>
