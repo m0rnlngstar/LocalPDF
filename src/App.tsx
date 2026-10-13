@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { MODULES, useAppStore } from './store/appStore'
 import { ToastContainer } from './components/ui/Toast'
+import { PasswordPrompt } from './components/ui/PasswordPrompt'
 import { BugReportButton } from './components/ui/BugReportButton'
 import { AppSidebar, SidebarReopen } from './components/AppSidebar'
 import { ModuleIcon } from './components/ui/ModuleIcon'
@@ -56,6 +57,7 @@ export default function App() {
       <ToolOverlay />
       <AppSidebar />
       <BugReportButton />
+      <PasswordPrompt />
       <ToastContainer />
     </>
   )

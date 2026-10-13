@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AI_ENABLED } from '../../lib/features'
 import { openInStudio, takeHandoff } from '../../studio/handoff'
 import {
   DndContext,
@@ -47,7 +48,8 @@ const CONFIG_KEY = 'smart-merge-config'
 function loadConfig(): SmartMergeConfig {
   try {
     const raw = localStorage.getItem(CONFIG_KEY)
-    if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
+    // IA locale désactivée : l'option mémorisée est ignorée
+    if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw), ...(AI_ENABLED ? {} : { useLlm: false }) }
   } catch { /* config corrompue : on repart des défauts */ }
   return DEFAULT_CONFIG
 }
@@ -442,9 +444,11 @@ export default function SmartMergeModule() {
                 role="switch"
                 className="toggle toggle-sm toggle-primary"
                 checked={config.useLlm}
+                disabled={!AI_ENABLED}
                 onChange={(e) => updateConfig({ useLlm: e.target.checked })}
               />
               🧩 Vérification des jointures par IA locale
+              {!AI_ENABLED && <span className="badge badge-ghost badge-sm">désactivée pour le moment</span>}
             </label>
             {config.useLlm && (
               <select

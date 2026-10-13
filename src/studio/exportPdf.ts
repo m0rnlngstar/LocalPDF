@@ -311,6 +311,14 @@ function addNativeComments(out: PDFDocument, page: PDFPage, H: number, anns: Ann
   page.node.set(PDFName.of('Annots'), arr)
 }
 
+interface Mask {
+  x: number
+  y: number
+  width: number
+  height: number
+  color: string
+}
+
 function intersects(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
 }
@@ -359,14 +367,35 @@ export async function buildStudioPdf(
   }
 
   /** Page rendue en image (caviardage, PDF chiffré ou endommagé, réduction de taille). */
-  async function addRasterPage(pageData: StudioPage, W: number, H: number, redactions: Annotation[]) {
+  /**
+   * Zones à effacer réellement du contenu d'origine : masquages (caviardage)
+   * et zones de texte sur fond opaque (« Modifier un texte ») — sans cela,
+   * l'ancien texte resterait présent, invisible mais copiable, sous la correction.
+   */
+  async function eraseZones(pageData: StudioPage): Promise<Mask[]> {
+    const zones: Mask[] = []
+    for (const a of pageData.annotations) {
+      if (a.type === 'redact') zones.push({ x: a.x, y: a.y, width: a.width, height: a.height, color: a.color })
+      if (a.type === 'text' && a.background) {
+        const font = await getFont(a)
+        const lines = wrapText(safeText(font, a.text), font, a.fontSize, a.width)
+        const pad = a.border ? TEXT_FRAME_PAD : 2
+        zones.push({
+          x: a.x - pad, y: a.y - pad, width: a.width + pad * 2,
+          height: lines.length * a.fontSize * 1.15 + pad * 2, color: a.background,
+        })
+      }
+    }
+    return zones
+  }
+
+  async function addRasterPage(pageData: StudioPage, W: number, H: number, masks: Mask[]) {
     const canvas = await renderPage(pageData, docs, (opts.rasterize?.dpi ?? 200) / 72)
     const ctx = canvas.getContext('2d')!
     const k = canvas.width / W
-    for (const r of redactions) {
-      if (r.type !== 'redact') continue
-      ctx.fillStyle = r.color
-      ctx.fillRect(r.x * k, r.y * k, r.width * k, r.height * k)
+    for (const m of masks) {
+      ctx.fillStyle = m.color
+      ctx.fillRect(m.x * k, m.y * k, m.width * k, m.height * k)
     }
     const jpg = await new Promise<Blob>((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('encodage'))), 'image/jpeg', opts.rasterize?.quality ?? 0.9))
     const image = await out.embedJpg(await jpg.arrayBuffer())
@@ -380,14 +409,14 @@ export async function buildStudioPdf(
     opts.onProgress?.(done, pages.length)
     const { width: W, height: H } = displaySize(pageData)
     const src = pageData.source
-    const redactions = pageData.annotations.filter((a) => a.type === 'redact')
+    const masks = await eraseZones(pageData)
     let hasOcr = includeOcr && !!pageData.ocr?.words.length
     /** Mots à réinjecter en texte invisible (OCR, ou texte natif d'une page aplatie). */
     let words = pageData.ocr?.words ?? []
     let page: PDFPage
 
     // PDF chiffré : pdf-lib ne sait pas déchiffrer, la page est rendue par pdf.js
-    let raster = redactions.length > 0 || !!opts.rasterize || (src.kind === 'pdf' && !!src.encrypted)
+    let raster = masks.length > 0 || !!opts.rasterize || (src.kind === 'pdf' && !!src.encrypted)
     let vectorPage: PDFPage | null = null
     if (!raster && src.kind === 'pdf') {
       try {
@@ -415,7 +444,7 @@ export async function buildStudioPdf(
     }
 
     if (raster) {
-      page = await addRasterPage(pageData, W, H, redactions)
+      page = await addRasterPage(pageData, W, H, masks)
       // La page aplatie reste cherchable : texte natif réinjecté hors zones masquées
       if (!hasOcr) {
         words = await getPageTextItems(pageData, docs)
@@ -438,7 +467,7 @@ export async function buildStudioPdf(
     if (hasOcr) {
       ocrFont ??= await out.embedFont(StandardFonts.Helvetica)
       for (const w of words) {
-        if (redactions.some((r) => intersects(w, annBounds(r)))) continue
+        if (masks.some((m) => intersects(w, m))) continue
         const text = safeText(ocrFont, w.text)
         if (!text) continue
         // Taille ajustée pour que la largeur du mot corresponde à la zone

@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist'
-import { openPdf, type PdfJsDocument } from '../lib/pdfjs'
+import type { PdfJsDocument } from '../lib/pdfjs'
+import { openProtected } from './passwords'
 import { displaySize, totalRotation, type StudioPage } from './types'
 
 /**
@@ -10,10 +11,12 @@ import { displaySize, totalRotation, type StudioPage } from './types'
 
 const docCache = new Map<string, Promise<PdfJsDocument>>()
 
-export function getPdfDoc(docId: string, bytes: ArrayBuffer, password?: string): Promise<PdfJsDocument> {
+export function getPdfDoc(docId: string, bytes: ArrayBuffer): Promise<PdfJsDocument> {
   let doc = docCache.get(docId)
   if (!doc) {
-    doc = openPdf(bytes, password)
+    // Document protégé : mot de passe en mémoire, sinon redemandé (une seule fois par document)
+    doc = openProtected(bytes, 'Un document de la session', docId).then((r) => r.doc)
+    doc.catch(() => docCache.delete(docId))
     docCache.set(docId, doc)
   }
   return doc
@@ -73,7 +76,7 @@ async function renderPageNow(
   if (page.source.kind === 'pdf') {
     const bytes = docs[page.source.docId]
     if (!bytes) throw new Error('Document source introuvable')
-    const doc = await getPdfDoc(page.source.docId, bytes, page.source.password)
+    const doc = await getPdfDoc(page.source.docId, bytes)
     const pdfPage = await doc.getPage(page.source.pageIndex + 1)
     // pdf.js : le paramètre rotation est ABSOLU (remplace la rotation propre)
     const viewport = pdfPage.getViewport({ scale, rotation: totalRotation(page) })
@@ -125,7 +128,7 @@ export function getPageTextItems(page: StudioPage, docs: Record<string, ArrayBuf
   let p = textCache.get(key)
   if (!p) {
     p = (async () => {
-      const doc = await getPdfDoc(src.docId, docs[src.docId], src.password)
+      const doc = await getPdfDoc(src.docId, docs[src.docId])
       const pdfPage = await doc.getPage(src.pageIndex + 1)
       const viewport = pdfPage.getViewport({ scale: 1, rotation: totalRotation(page) })
       const content = await pdfPage.getTextContent()

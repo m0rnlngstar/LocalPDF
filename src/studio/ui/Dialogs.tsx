@@ -79,6 +79,8 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
   const [nativeComments, setNativeComments] = useState(true)
   const [includeOcr, setIncludeOcr] = useState(true)
   const [withWatermark, setWithWatermark] = useState(true)
+  // Le nom du fichier (souvent le nom du client) n'est pas écrit dans les propriétés du PDF par défaut
+  const [withTitle, setWithTitle] = useState(false)
   const [maxMb, setMaxMbState] = useState<number>(() => {
     try {
       return Number(localStorage.getItem(MAX_SIZE_KEY)) || 0
@@ -122,7 +124,7 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
     const setBusy = (label: string, p: number | null = null) => useBusy.getState().set(label, p)
     const opts = {
       watermark: withWatermark ? watermark : null,
-      nativeComments, includeOcr, compress: compress || null, title: base,
+      nativeComments, includeOcr, compress: compress || null, title: withTitle ? base : undefined,
       onProgress: (d: number, t: number) => setBusy('Export en cours…', t ? d / t : null),
     }
     const chosen = chosenPages()
@@ -261,10 +263,12 @@ export function ExportDialog({ open, onClose }: { open: boolean; onClose: () => 
         <div className="studio-checks">
           <label><input type="checkbox" className="checkbox checkbox-sm" checked={nativeComments} onChange={(e) => setNativeComments(e.target.checked)} disabled={!hasComments} /> Commentaires lisibles dans Acrobat / Edge</label>
           <label><input type="checkbox" className="checkbox checkbox-sm" checked={includeOcr} onChange={(e) => setIncludeOcr(e.target.checked)} disabled={!hasOcr} /> Texte OCR invisible (PDF cherchable)</label>
+          <label><input type="checkbox" className="checkbox checkbox-sm" checked={withTitle} onChange={(e) => setWithTitle(e.target.checked)} /> Écrire le nom du document dans les propriétés du PDF</label>
           <label><input type="checkbox" className="checkbox checkbox-sm" checked={withWatermark} onChange={(e) => setWithWatermark(e.target.checked)} disabled={!watermark?.text} /> Filigrane {watermark?.text ? `« ${watermark.text} »` : '(aucun)'}</label>
         </div>
         <p className="studio-hint">
-          Les zones masquées (caviardage) sont aplaties : le texte situé dessous est réellement supprimé du fichier.
+          Les zones masquées et les corrections de texte sur fond opaque sont aplaties : le texte d’origine situé dessous
+          est réellement supprimé du fichier (la page devient une image, son texte reste cherchable).
         </p>
       </div>
     </Modal>

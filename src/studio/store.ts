@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { debouncedSaver, loadSession } from '../lib/storage'
+import { rememberPassword } from './passwords'
 import {
   displaySize, newId, rotateAnnotation90, rotateWords90,
   type Annotation, type StudioPage, type Tool, type UserRotation, type Watermark,
@@ -104,6 +105,13 @@ interface StudioState extends PersistedState {
 
 const save = debouncedSaver(SESSION_KEY)
 
+function withoutPassword(p: StudioPage): StudioPage {
+  if (p.source.kind !== 'pdf' || !p.source.password) return p
+  const { password: _omit, ...source } = p.source
+  void _omit
+  return { ...p, source }
+}
+
 const DEFAULT_TOOL_OPTIONS: ToolOptions = {
   highlightColor: '#fde047',
   strokeColor: '#dc2626',
@@ -132,7 +140,7 @@ function loadToolOptions(): ToolOptions {
 export const useStudio = create<StudioState>((set, get) => {
   function persist() {
     const { docs, pages, name, watermark, currentPageId } = get()
-    save({ docs, pages, name, watermark, currentPageId } satisfies PersistedState)
+    save({ docs, pages: pages.map(withoutPassword), name, watermark, currentPageId } satisfies PersistedState)
   }
 
   /** Dernière modification « fusionnable » (saisie continue sur un même élément). */
@@ -187,7 +195,11 @@ export const useStudio = create<StudioState>((set, get) => {
         ...(saved?.pages?.length
           ? {
               docs: saved.docs,
-              pages: saved.pages,
+              // Anciennes sessions : mot de passe retiré du stockage, gardé en mémoire
+              pages: saved.pages.map((p) => {
+                if (p.source.kind === 'pdf' && p.source.password) rememberPassword(p.source.docId, p.source.password)
+                return withoutPassword(p)
+              }),
               name: saved.name ?? 'document',
               watermark: saved.watermark ?? null,
               currentPageId: saved.currentPageId,

@@ -1,5 +1,6 @@
 import type { RenderedPage } from './types'
 import { canvasToPage, releaseCanvas } from './raster'
+import { sanitizeHtml } from './sanitize'
 
 /** 96 dpi (CSS px) / 72 dpi (points PDF). */
 const PT_TO_PX = 4 / 3
@@ -38,23 +39,37 @@ export async function renderHtmlToPages(html: string, page: PageBox = A4_PAGE): 
   const pagePxH = Math.round(page.heightPt * PT_TO_PX)
   const marginPx = 48
 
-  const container = document.createElement('div')
-  container.style.position = 'fixed'
-  container.style.top = '0'
-  container.style.left = '-99999px'
-  container.style.width = `${pagePxW}px`
-  container.style.boxSizing = 'border-box'
-  container.style.padding = `${marginPx}px`
-  container.style.background = '#ffffff'
-  container.style.color = '#111111'
-  container.style.fontFamily = '"Segoe UI", Arial, sans-serif'
-  container.style.fontSize = '15px'
-  container.style.lineHeight = '1.5'
-  container.innerHTML = `<style>${BASE_STYLE}</style>${html}`
-  document.body.appendChild(container)
+  /*
+   * Rendu dans un cadre isolé (iframe sandbox SANS scripts) :
+   * - le contenu importé, déjà nettoyé, ne peut de toute façon rien exécuter ;
+   * - il ne reçoit pas les styles de l'application (dont les couleurs oklab
+   *   du thème, que html2canvas ne sait pas lire).
+   */
+  const frame = document.createElement('iframe')
+  frame.setAttribute('sandbox', 'allow-same-origin')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.tabIndex = -1
+  Object.assign(frame.style, {
+    position: 'fixed', top: '0', left: '-99999px', width: `${pagePxW}px`, height: '100px', border: '0',
+  })
+  const bodyStyle = [
+    'margin:0', `width:${pagePxW}px`, 'box-sizing:border-box', `padding:${marginPx}px`,
+    'background:#ffffff', 'color:#111111', 'font-family:"Segoe UI", Arial, sans-serif',
+    'font-size:15px', 'line-height:1.5',
+  ].join(';')
+  const loaded = new Promise<void>((resolve) => frame.addEventListener('load', () => resolve(), { once: true }))
+  // HTML issu d'un fichier importé : nettoyé (scripts, ressources externes) avant insertion
+  frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style>${BASE_STYLE}</style></head>`
+    + `<body style='${bodyStyle}'>${sanitizeHtml(html)}</body></html>`
+  document.body.appendChild(frame)
 
   try {
-    const fullCanvas = await html2canvas(container, {
+    await loaded
+    const doc = frame.contentDocument
+    if (!doc?.body) throw new Error('Rendu du document impossible')
+    // Hauteur réelle du contenu, pour que html2canvas capture tout
+    frame.style.height = `${Math.max(pagePxH, doc.documentElement.scrollHeight)}px`
+    const fullCanvas = await html2canvas(doc.body, {
       scale,
       backgroundColor: '#ffffff',
       windowWidth: pagePxW,
@@ -83,6 +98,6 @@ export async function renderHtmlToPages(html: string, page: PageBox = A4_PAGE): 
     releaseCanvas(fullCanvas)
     return pages
   } finally {
-    container.remove()
+    frame.remove()
   }
 }

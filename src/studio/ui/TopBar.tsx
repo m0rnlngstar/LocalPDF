@@ -5,7 +5,8 @@ import { BrandMark } from '../../components/ui/ModuleIcon'
 import { SidebarReopen } from '../../components/AppSidebar'
 import { ThemeController } from '../../components/ui/ThemeController'
 import { IconDownload, IconFilePlus, IconGrid, IconPlus, IconX } from '../../components/ui/icons'
-import { clearCacheAndReload } from '../../lib/storage'
+import { clearCacheAndReload, getRetentionDays, RETENTION_CHOICES, setRetentionDays } from '../../lib/storage'
+import { toast } from '../../components/ui/Toast'
 import {
   IconBook, IconComments, IconFolderOpen, IconMaximize, IconRedo, IconScanText, IconSearch, IconSidebar,
   IconUndo, IconZoomIn, IconZoomOut,
@@ -63,6 +64,25 @@ export function FileMenu() {
         <MenuItem onClick={() => window.confirm('Vider le cache ? Tous les fichiers et travaux en cours seront supprimés de ce navigateur.') && void clearCacheAndReload()}>
           Vider le cache local
         </MenuItem>
+        <li className="studio-retention">
+          <label onClick={(e) => e.stopPropagation()}>
+            <span>Conserver mes travaux sur ce poste</span>
+            <select
+              className="select select-xs"
+              defaultValue={getRetentionDays()}
+              onChange={(e) => {
+                const days = Number(e.target.value)
+                void setRetentionDays(days).then(() =>
+                  toast.info(days === 0 ? 'Rien ne sera conservé : fermer l’onglet efface le document.' : `Travaux conservés ${days} jour${days > 1 ? 's' : ''} sur ce poste.`)
+                )
+              }}
+            >
+              {RETENTION_CHOICES.map((d) => (
+                <option key={d} value={d}>{d === 0 ? 'Non (rien n’est enregistré)' : `${d} jour${d > 1 ? 's' : ''}`}</option>
+              ))}
+            </select>
+          </label>
+        </li>
         <MenuItem onClick={() => openDialog('shortcuts')}>Raccourcis clavier</MenuItem>
         <li><a href="mailto:h.dupuis@co-pilotes.com?subject=LocalPDF%20%E2%80%93%20signalement%20de%20bug" onClick={closeMenus}>Signaler un bug…</a></li>
       </ul>

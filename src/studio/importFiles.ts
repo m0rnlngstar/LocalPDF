@@ -1,4 +1,4 @@
-import { isPasswordError, openPdf, type PdfJsDocument } from '../lib/pdfjs'
+import { openProtected, PasswordRequiredError } from './passwords'
 import { convertFile } from '../lib/convert/converters'
 import { sniffFormat } from '../lib/convert/formats'
 import { newId, type StudioPage } from './types'
@@ -42,39 +42,9 @@ function isEncrypted(bytes: ArrayBuffer): boolean {
     dec.decode(bytes.slice(0, Math.min(n, zone))).includes('/Encrypt')
 }
 
-/** Ouvre le PDF ; s'il est protégé, demande le mot de passe (3 essais). */
-async function openWithPassword(bytes: ArrayBuffer, name: string): Promise<{ doc: PdfJsDocument; password?: string }> {
-  try {
-    return { doc: await openPdf(bytes) }
-  } catch (err) {
-    if (!isPasswordError(err)) throw err
-  }
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const password = window.prompt(
-      attempt === 0
-        ? `« ${name} » est protégé par un mot de passe.
-Saisissez-le pour l’ouvrir (il reste dans ce navigateur) :`
-        : `Mot de passe incorrect pour « ${name} ». Réessayez :`
-    )
-    if (password === null) break
-    try {
-      return { doc: await openPdf(bytes, password), password }
-    } catch (err) {
-      if (!isPasswordError(err)) throw err
-    }
-  }
-  throw new PasswordRequiredError()
-}
-
-class PasswordRequiredError extends Error {
-  constructor() {
-    super('mot de passe requis')
-  }
-}
-
 async function pdfToPages(bytes: ArrayBuffer, name = 'document.pdf'): Promise<ImportResult> {
   const docId = newId()
-  const { doc, password } = await openWithPassword(bytes, name)
+  const { doc, password } = await openProtected(bytes, name, docId)
   const encrypted = !!password || isEncrypted(bytes)
   try {
     const pages: StudioPage[] = []
@@ -86,7 +56,6 @@ async function pdfToPages(bytes: ArrayBuffer, name = 'document.pdf'): Promise<Im
         source: {
           kind: 'pdf', docId, pageIndex: i, width: vp.width, height: vp.height, inherentRotation: page.rotate,
           ...(encrypted ? { encrypted } : {}),
-          ...(password ? { password } : {}),
         },
         rotation: 0,
         annotations: [],

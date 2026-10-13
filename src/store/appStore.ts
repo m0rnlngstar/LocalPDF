@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { AI_ENABLED } from '../lib/features'
 
 /**
  * Outils avancés : modules autonomes ouverts PAR-DESSUS l'éditeur (Studio).
@@ -20,7 +21,7 @@ export interface ModuleMeta {
   acceptsDocument: boolean
 }
 
-export const MODULES: ModuleMeta[] = [
+const ALL_MODULES: ModuleMeta[] = [
   {
     id: 'scanner', label: 'Scanner un document', tone: 'emerald', acceptsDocument: false,
     desc: 'Photographiez plusieurs pages, redressez-les et créez un PDF recherchable.',
@@ -46,6 +47,11 @@ export const MODULES: ModuleMeta[] = [
     desc: 'Posez vos questions sur le PDF à une IA 100 % locale.',
   },
 ]
+
+/** Outils proposés : sans l'IA locale, « Interroger le document » est masqué. */
+export const MODULES: ModuleMeta[] = AI_ENABLED
+  ? ALL_MODULES
+  : ALL_MODULES.filter((m) => m.id !== 'docchat').map((m) => (m.badge === 'IA locale' ? { ...m, badge: undefined } : m))
 
 const THEME_KEY = 'pdf-toolkit-theme'
 const SIDEBAR_KEY = 'localpdf-sidebar-open'

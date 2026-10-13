@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AI_ENABLED } from '../../lib/features'
 import { takeHandoff } from '../../studio/handoff'
 import {
   analyzeDocument,
@@ -38,7 +39,8 @@ const CONFIG_KEY = 'smart-split-config'
 function loadConfig(): SmartSplitConfig {
   try {
     const raw = localStorage.getItem(CONFIG_KEY)
-    if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
+    // IA locale désactivée : l'option mémorisée est ignorée
+    if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw), ...(AI_ENABLED ? {} : { useLlm: false }) }
   } catch { /* config corrompue : on repart des défauts */ }
   return DEFAULT_CONFIG
 }
@@ -453,8 +455,10 @@ export default function SmartSplitModule() {
                 role="switch"
                 className="toggle toggle-sm toggle-primary"
                 checked={config.useLlm}
+                disabled={!AI_ENABLED}
                 onChange={(e) => updateConfig({ useLlm: e.target.checked })}
               />
+              {!AI_ENABLED && <span className="badge badge-ghost badge-sm">désactivée</span>}
               🧩 Vérification des coupures par IA locale
             </label>
             {config.useLlm && (

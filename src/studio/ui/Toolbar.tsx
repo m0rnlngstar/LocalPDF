@@ -52,7 +52,7 @@ const HINTS: Partial<Record<Tool, string>> = {
   'text-select': 'Glissez pour sélectionner le texte, puis Ctrl+C pour le copier',
   highlight: 'Glissez sur le texte à surligner',
   note: 'Cliquez pour épingler un commentaire',
-  'edit-text': 'Cliquez sur une ligne de texte pour la corriger',
+  'edit-text': 'Cliquez sur une ligne pour la corriger — à l’export, l’ancien texte est réellement effacé',
   text: 'Cliquez pour ajouter du texte',
   callout: 'Cliquez sur l’endroit à viser, puis glissez jusqu’à l’emplacement du texte',
   rect: 'Glissez pour tracer',
