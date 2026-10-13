@@ -1,7 +1,7 @@
 import { openPdf } from '../../lib/pdfjs'
 import { renderHtmlToPages, A4_PAGE } from './htmlToPages'
 import { newId, type ConvertItem, type RenderedPage } from './types'
-import { blobToPage, makeThumb, releaseCanvas } from './raster'
+import { blobToPage, heifImageToPage, makeThumb, releaseCanvas } from './raster'
 
 function extOf(name: string): string {
   const m = /\.([a-z0-9]+)$/i.exec(name)
@@ -16,10 +16,20 @@ async function convertImageFile(file: Blob): Promise<RenderedPage[]> {
   return [await blobToPage(file, A4_PAGE.widthPt)]
 }
 
+/**
+ * HEIC/HEIF décodé par libheif (WASM, local) : heic2any échoue sur les photos iPhone récentes.
+ * Le résultat est directement réduit à MAX_PAGE_PX et ré-encodé en JPEG léger.
+ */
 async function convertHeicFile(file: File): Promise<RenderedPage[]> {
-  const { default: heic2any } = await import('heic2any')
-  const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 })
-  return convertImageFile(Array.isArray(result) ? result[0] : result)
+  const { default: createLibheif } = await import('libheif-js/libheif-wasm/libheif-bundle.mjs')
+  const libheif = await createLibheif()
+  const images = new libheif.HeifDecoder().decode(await file.arrayBuffer())
+  if (!images.length) throw new Error('Fichier HEIC illisible')
+  const pages: RenderedPage[] = []
+  for (const image of images.slice(0, 1)) {
+    pages.push(await heifImageToPage(image, A4_PAGE.widthPt))
+  }
+  return pages
 }
 
 /** Miniature de la première page d'un PDF source ; le document pdf.js est libéré ensuite. */

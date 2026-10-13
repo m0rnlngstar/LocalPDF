@@ -94,6 +94,40 @@ export async function blobToPage(blob: Blob, maxWidthPt: number): Promise<Render
   }
 }
 
+/** Image HEIF décodée par libheif → page JPEG réduite à MAX_PAGE_PX (mémoire pleine résolution libérée aussitôt). */
+export async function heifImageToPage(
+  image: { get_width(): number; get_height(): number; display(t: ImageData, cb: (r: ImageData | null) => void): void; free(): void },
+  maxWidthPt: number
+): Promise<RenderedPage> {
+  const w = image.get_width()
+  const h = image.get_height()
+  try {
+    const full = document.createElement('canvas')
+    full.width = w
+    full.height = h
+    const fctx = full.getContext('2d')!
+    const target = fctx.createImageData(w, h)
+    const decoded = await new Promise<ImageData | null>((resolve) => image.display(target, resolve))
+    if (!decoded) throw new Error('Décodage HEIC impossible')
+    fctx.putImageData(decoded, 0, 0)
+
+    const scale = Math.min(1, MAX_PAGE_PX / Math.max(w, h))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(w * scale))
+    canvas.height = Math.max(1, Math.round(h * scale))
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(full, 0, 0, canvas.width, canvas.height)
+    releaseCanvas(full)
+    const ratio = Math.min(1, maxWidthPt / w)
+    return await canvasToPage(canvas, w * ratio, h * ratio, PHOTO_QUALITY)
+  } finally {
+    image.free()
+  }
+}
+
 /** Charge une page en canvas pleine résolution (pour l'OCR). */
 export async function pageToCanvas(page: RenderedPage): Promise<HTMLCanvasElement> {
   const bitmap = await createImageBitmap(page.blob)
