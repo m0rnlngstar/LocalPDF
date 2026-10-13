@@ -1,12 +1,13 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import {
-  Stage, Layer, Rect, Ellipse, Text, Line, Arrow, Label, Tag, Group, Image as KImage, Transformer,
+  Stage, Layer, Rect, Ellipse, Text, Line, Arrow, Label, Tag, Group, Image as KImage, Transformer, Circle,
 } from 'react-konva'
 import type Konva from 'konva'
 import { useStudio } from '../store'
 import { CANVAS_FONTS } from '../../lib/fonts'
 import { getPageTextItems, loadImage, textRectsInZone } from '../render'
-import { displaySize, newId, type Annotation, type StudioPage } from '../types'
+import { CALLOUT_PAD, displaySize, newId, type Annotation, type StudioPage } from '../types'
+import { calloutAnchor, calloutHeight, cssFont, longestLine } from '../textMeasure'
 import { toast } from '../../components/ui/Toast'
 import { PageBitmap } from './PageBitmap'
 import { TextLayer, usePageText } from './TextLayer'
@@ -20,14 +21,16 @@ import { TextLayer, usePageText } from './TextLayer'
 type Box = { x: number; y: number; width: number; height: number }
 
 interface Draft {
-  tool: 'highlight' | 'rect' | 'ellipse' | 'redact' | 'line' | 'arrow'
+  tool: 'highlight' | 'rect' | 'ellipse' | 'redact' | 'line' | 'arrow' | 'callout'
   x0: number
   y0: number
   x1: number
   y1: number
 }
 
-const BOX_TOOLS = new Set(['highlight', 'rect', 'ellipse', 'redact', 'line', 'arrow'])
+const BOX_TOOLS = new Set(['highlight', 'rect', 'ellipse', 'redact', 'line', 'arrow', 'callout'])
+/** Largeur par défaut d'une nouvelle bulle (points). */
+const CALLOUT_WIDTH = 170
 /** Outils qui restent actifs après usage (on enchaîne souvent plusieurs tracés). */
 const STICKY_TOOLS = new Set(['highlight', 'ink', 'redact'])
 
@@ -56,11 +59,14 @@ function ImageNode(props: Omit<Konva.ImageConfig, 'image'> & { dataUrl: string }
 }
 
 const AnnShape = memo(function AnnShape({
-  ann, pageId, interactive,
+  ann, pageId, interactive, selected = false, editing = false,
 }: {
   ann: Annotation
   pageId: string
   interactive: boolean
+  selected?: boolean
+  /** Texte en cours de saisie (zone de saisie affichée par-dessus). */
+  editing?: boolean
 }) {
   const updateAnnotation = useStudio((s) => s.updateAnnotation)
   const selectAnnotation = useStudio((s) => s.selectAnnotation)
@@ -68,7 +74,7 @@ const AnnShape = memo(function AnnShape({
 
   const select = () => selectAnnotation({ pageId, id: ann.id })
   const edit = () => {
-    if (ann.type === 'text' || ann.type === 'note' || ann.type === 'stamp') setEditingAnn({ pageId, id: ann.id })
+    if (ann.type === 'text' || ann.type === 'callout' || ann.type === 'note' || ann.type === 'stamp') setEditingAnn({ pageId, id: ann.id })
   }
 
   const common = {
@@ -91,6 +97,40 @@ const AnnShape = memo(function AnnShape({
     onMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>) => {
       e.target.getStage()!.container().style.cursor = ''
     },
+  }
+
+  /**
+   * Pendant le redimensionnement, l'échelle appliquée par le Transformer est
+   * aussitôt convertie en largeur/hauteur : le texte se réorganise au lieu
+   * d'être étiré comme une image.
+   */
+  function liveResize(e: Konva.KonvaEventObject<Event>) {
+    const node = e.target as Konva.Group
+    const sx = node.scaleX()
+    const sy = node.scaleY()
+    node.scale({ x: 1, y: 1 })
+    const box = node.findOne<Konva.Rect>('.box')
+    const text = node.findOne<Konva.Text>('.content')
+    const w = Math.max(24, (box?.width() ?? text?.width() ?? 24) * sx)
+    if (box) {
+      box.width(w)
+      if (ann.type === 'note') box.height(Math.max(30, box.height() * sy))
+    }
+    if (text) {
+      text.width(ann.type === 'callout' ? w - CALLOUT_PAD * 2 : w)
+      if (ann.type === 'note') text.height(box?.height() ?? text.height())
+    }
+  }
+
+  function liveResizeEnd(e: Konva.KonvaEventObject<Event>) {
+    const node = e.target as Konva.Group
+    const box = node.findOne<Konva.Rect>('.box')
+    const text = node.findOne<Konva.Text>('.content')
+    const width = box?.width() ?? text?.width() ?? 24
+    updateAnnotation(pageId, ann.id, {
+      x: node.x(), y: node.y(), width,
+      ...(ann.type === 'note' && box ? { height: box.height() } : {}),
+    })
   }
 
   function resizeEnd(e: Konva.KonvaEventObject<Event>) {
@@ -172,10 +212,10 @@ const AnnShape = memo(function AnnShape({
       )
     case 'text':
       return (
-        <Label {...common} onTransformEnd={resizeEnd}>
-          <Tag fill={ann.background ?? 'rgba(0,0,0,0)'} />
+        <Group {...common} onTransform={liveResize} onTransformEnd={liveResizeEnd}>
           <Text
-            text={ann.text || ' '}
+            name="content"
+            text={editing ? ' ' : ann.text || ' '}
             width={ann.width}
             fontSize={ann.fontSize}
             fontFamily={CANVAS_FONTS[ann.fontFamily ?? 'Helvetica']}
@@ -184,19 +224,77 @@ const AnnShape = memo(function AnnShape({
             fill={ann.color}
             lineHeight={1.15}
             wrap="word"
+            sceneFunc={(context, shape) => {
+              // Fond opaque (correction de texte) dessiné sous le texte, à sa taille réelle
+              if (ann.background) {
+                context.fillStyle = ann.background
+                context.fillRect(0, 0, shape.width(), shape.height())
+              }
+              ;(shape as Konva.Text)._sceneFunc(context)
+            }}
           />
-        </Label>
+        </Group>
       )
+    case 'callout': {
+      const h = calloutHeight(ann)
+      const anchor = calloutAnchor({ x: ann.x, y: ann.y, width: ann.width, height: h }, ann.tx, ann.ty)
+      return (
+        <>
+          {anchor && (
+            <Arrow
+              name="callout-arrow"
+              points={[anchor.x, anchor.y, ann.tx, ann.ty]}
+              stroke={ann.stroke} fill={ann.stroke} strokeWidth={1.5}
+              pointerLength={7} pointerWidth={7} lineCap="round"
+              listening={interactive} hitStrokeWidth={12}
+              onClick={select} onTap={select}
+            />
+          )}
+          <Group {...common} onTransform={liveResize} onTransformEnd={liveResizeEnd}>
+            <Rect
+              name="box" width={ann.width} height={h}
+              fill={ann.background ?? 'rgba(255,255,255,0.01)'} stroke={ann.stroke} strokeWidth={1.2} cornerRadius={3}
+            />
+            <Text
+              name="content"
+              x={CALLOUT_PAD} y={CALLOUT_PAD}
+              text={editing ? ' ' : ann.text || ' '}
+              width={ann.width - CALLOUT_PAD * 2}
+              fontSize={ann.fontSize} fontFamily={CANVAS_FONTS.Helvetica}
+              fill={ann.color} lineHeight={1.15} wrap="word"
+            />
+          </Group>
+          {selected && interactive && (
+            // Poignée de la pointe : on la déplace pour viser un autre endroit
+            <Circle
+              x={ann.tx} y={ann.ty} radius={5} fill="#ffffff" stroke="#6d5dfc" strokeWidth={2}
+              draggable
+              onMouseEnter={(e) => { e.target.getStage()!.container().style.cursor = 'crosshair' }}
+              onMouseLeave={(e) => { e.target.getStage()!.container().style.cursor = '' }}
+              onDragMove={(e) => {
+                // Aperçu en direct de la flèche pendant le déplacement de la pointe
+                const arrow = e.target.getLayer()?.findOne<Konva.Arrow>('.callout-arrow')
+                const a = calloutAnchor({ x: ann.x, y: ann.y, width: ann.width, height: h }, e.target.x(), e.target.y())
+                if (arrow && a) arrow.points([a.x, a.y, e.target.x(), e.target.y()])
+              }}
+              onDragEnd={(e) => updateAnnotation(pageId, ann.id, { tx: e.target.x(), ty: e.target.y() })}
+            />
+          )}
+        </>
+      )
+    }
     case 'note':
       return (
-        <Group {...common} onTransformEnd={resizeEnd}>
+        <Group {...common} onTransform={liveResize} onTransformEnd={liveResizeEnd}>
           <Rect
+            name="box"
             width={ann.width} height={ann.height} fill={ann.color}
             stroke="rgba(0,0,0,0.15)" strokeWidth={1}
             shadowColor="black" shadowBlur={6} shadowOpacity={0.18} shadowOffsetY={2}
           />
           <Text
-            text={ann.text} width={ann.width} height={ann.height} padding={8}
+            name="content"
+            text={editing ? '' : ann.text} width={ann.width} height={ann.height} padding={8}
             fontSize={11} fontFamily={CANVAS_FONTS.Helvetica} fill="#333333" lineHeight={1.15}
           />
         </Group>
@@ -223,6 +321,7 @@ function transformerConfig(ann: Annotation | undefined) {
   if (!ann) return { anchors: [] as string[], keepRatio: false }
   switch (ann.type) {
     case 'text':
+    case 'callout':
       return { anchors: ['middle-left', 'middle-right'], keepRatio: false }
     case 'image':
       return { anchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'], keepRatio: true }
@@ -430,6 +529,22 @@ export const PageCanvas = memo(function PageCanvas({
         x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1),
         width: Math.abs(d.x1 - d.x0), height: Math.abs(d.y1 - d.y0),
       }
+      if (d.tool === 'callout') {
+        // Point de départ = endroit visé ; point d'arrivée = position de la zone de texte
+        const dragged = Math.hypot(d.x1 - d.x0, d.y1 - d.y0) > 12
+        const bx = dragged ? (d.x1 < d.x0 ? d.x1 - CALLOUT_WIDTH : d.x1) : d.x0 + 36
+        const by = dragged ? d.y1 - 14 : d.y0 - 64
+        const id = newId()
+        addAnnotation(page.id, {
+          id, type: 'callout',
+          x: Math.max(4, Math.min(W - CALLOUT_WIDTH - 4, bx)), y: Math.max(4, by),
+          width: CALLOUT_WIDTH, text: '', fontSize: Math.min(opts.fontSize, 14),
+          color: opts.textColor, stroke: opts.strokeColor, background: '#ffffff', tx: d.x0, ty: d.y0,
+        })
+        setTool('select')
+        setTimeout(() => setEditingAnn({ pageId: page.id, id }), 0)
+        return
+      }
       if (d.tool === 'line' || d.tool === 'arrow') {
         if (Math.hypot(d.x1 - d.x0, d.y1 - d.y0) < 4) return
         addAnnotation(page.id, {
@@ -549,11 +664,16 @@ export const PageCanvas = memo(function PageCanvas({
               )}
             </Layer>
             <Layer>
-              {others.map((ann) =>
-                ann.id === editingId && ann.type === 'text' ? null : (
-                  <AnnShape key={ann.id} ann={ann} pageId={page.id} interactive={interactive} />
-                )
-              )}
+              {others.map((ann) => (
+                <AnnShape
+                  key={ann.id}
+                  ann={ann}
+                  pageId={page.id}
+                  interactive={interactive}
+                  selected={ann.id === selectedAnn}
+                  editing={ann.id === editingId}
+                />
+              ))}
               {draft && draft.tool !== 'highlight' && <DraftShape draft={draft} opts={opts} />}
               {ink && (
                 <Line points={ink} stroke={opts.inkColor} strokeWidth={opts.strokeWidth} lineCap="round" lineJoin="round" listening={false} />
@@ -565,7 +685,7 @@ export const PageCanvas = memo(function PageCanvas({
                 keepRatio={tr.keepRatio}
                 flipEnabled={false}
                 ignoreStroke
-                anchorSize={8}
+                anchorSize={10}
                 borderStroke="#6d5dfc"
                 anchorStroke="#6d5dfc"
                 boundBoxFunc={(oldBox, newBox) => (newBox.width < 5 || newBox.height < 5 ? oldBox : newBox)}
@@ -620,23 +740,26 @@ export const PageCanvas = memo(function PageCanvas({
             </div>
           )}
 
-          {editing && (editing.type === 'text' || editing.type === 'note' || editing.type === 'stamp') && (
+          {editing && (editing.type === 'text' || editing.type === 'callout' || editing.type === 'note' || editing.type === 'stamp') && (
             <textarea
               autoFocus
               className={`studio-inline-editor is-${editing.type}`}
               style={{
-                left: editing.x * scale,
-                top: editing.y * scale,
-                width: editing.type === 'stamp' ? 220 : editing.width * scale,
+                left: (editing.x + (editing.type === 'callout' ? CALLOUT_PAD : 0)) * scale,
+                top: (editing.y + (editing.type === 'callout' ? CALLOUT_PAD : 0)) * scale,
+                width: editing.type === 'stamp' ? 220
+                  : editing.type === 'callout' ? (editing.width - CALLOUT_PAD * 2) * scale
+                    : editing.width * scale,
                 minHeight: editing.type === 'note' ? editing.height * scale : undefined,
-                fontSize: editing.type === 'text' ? editing.fontSize * scale : 13,
+                fontSize: editing.type === 'text' || editing.type === 'callout' ? editing.fontSize * scale : 13,
                 lineHeight: 1.15,
                 fontFamily: editing.type === 'text' ? CANVAS_FONTS[editing.fontFamily ?? 'Helvetica'] : undefined,
                 fontWeight: editing.type === 'text' && editing.bold ? 700 : undefined,
                 fontStyle: editing.type === 'text' && editing.italic ? 'italic' : undefined,
                 textAlign: editing.type === 'text' ? editing.align ?? 'left' : undefined,
-                color: editing.type === 'text' ? editing.color : undefined,
-                background: editing.type === 'text' ? editing.background ?? 'rgba(255,255,255,0.85)' : undefined,
+                color: editing.type === 'text' || editing.type === 'callout' ? editing.color : undefined,
+                background: editing.type === 'text' ? editing.background ?? 'rgba(255,255,255,0.85)'
+                  : editing.type === 'callout' ? editing.background ?? 'transparent' : undefined,
               }}
               defaultValue={editing.text}
               onFocus={(e) => {
@@ -646,7 +769,7 @@ export const PageCanvas = memo(function PageCanvas({
                 t.style.height = `${t.scrollHeight}px`
               }}
               placeholder={editing.type === 'note' ? 'Votre commentaire…' : 'Saisissez votre texte…'}
-              rows={editing.type === 'text' ? Math.max(1, editing.text.split('\n').length) : 3}
+              rows={editing.type === 'text' || editing.type === 'callout' ? Math.max(1, editing.text.split('\n').length) : 3}
               onInput={(e) => {
                 const t = e.currentTarget
                 t.style.height = 'auto'
@@ -654,9 +777,22 @@ export const PageCanvas = memo(function PageCanvas({
               }}
               onBlur={(e) => {
                 const text = e.target.value.replace(/\s+$/, '')
-                if (!text.trim() && editing.type !== 'note') removeAnnotation(page.id, editing.id)
-                else if (text !== editing.text) updateAnnotation(page.id, editing.id, { text })
                 setEditingAnn(null)
+                if (!text.trim() && editing.type !== 'note') {
+                  removeAnnotation(page.id, editing.id)
+                  return
+                }
+                // La zone se resserre sur le texte quand il ne la remplit pas
+                // (sauf correction sur fond opaque : il faut masquer tout l'ancien texte)
+                let fit: { width: number } | null = null
+                if (editing.type === 'text' && !editing.background) {
+                  const w = longestLine(text, cssFont(editing.fontSize, editing.fontFamily, editing.bold, editing.italic)) + 4
+                  if (w < editing.width) fit = { width: Math.max(24, w) }
+                } else if (editing.type === 'callout') {
+                  const w = longestLine(text, cssFont(editing.fontSize)) + CALLOUT_PAD * 2 + 4
+                  if (w < editing.width) fit = { width: Math.max(40, w) }
+                }
+                if (text !== editing.text || fit) updateAnnotation(page.id, editing.id, { text, ...fit })
               }}
               onKeyDown={(e) => {
                 e.stopPropagation()
@@ -711,6 +847,20 @@ function DraftShape({ draft, opts }: { draft: Draft; opts: { strokeColor: string
   const w = Math.abs(draft.x1 - draft.x0)
   const h = Math.abs(draft.y1 - draft.y0)
   switch (draft.tool) {
+    case 'callout':
+      return (
+        <>
+          <Arrow
+            points={[draft.x1, draft.y1, draft.x0, draft.y0]} stroke={opts.strokeColor} fill={opts.strokeColor}
+            strokeWidth={1.5} pointerLength={7} pointerWidth={7} listening={false}
+          />
+          <Rect
+            x={draft.x1 < draft.x0 ? draft.x1 - CALLOUT_WIDTH : draft.x1} y={draft.y1 - 14}
+            width={CALLOUT_WIDTH} height={28} stroke={opts.strokeColor} strokeWidth={1.2} dash={[4, 3]}
+            fill="rgba(255,255,255,0.7)" cornerRadius={3} listening={false}
+          />
+        </>
+      )
     case 'redact':
       return <Rect x={x} y={y} width={w} height={h} fill="#000" opacity={0.6} listening={false} />
     case 'ellipse':

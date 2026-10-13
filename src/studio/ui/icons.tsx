@@ -72,6 +72,9 @@ export const IconArrowLeft = () => (
 export const IconMaximize = () => (
   <svg {...base}><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" /></svg>
 )
+export const IconCallout = () => (
+  <svg {...base}><rect x="9" y="3" width="12" height="9" rx="1.5" /><path d="M12 7h6M9 10 3.5 19.5M3.5 19.5l.4-3.6M3.5 19.5l3.4-1.2" /></svg>
+)
 export const IconTextSelect = () => (
   <svg {...base}><path d="M5 4h4M7 4v16M5 20h4" /><rect x="12" y="7" width="9" height="4" rx="1" /><path d="M12 15h9M12 19h6" /></svg>
 )

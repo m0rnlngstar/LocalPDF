@@ -65,6 +65,28 @@ export interface TextAnn extends BaseAnn {
   background?: string
 }
 
+/**
+ * Bulle : zone de texte reliée par une flèche au point visé (tx, ty, en
+ * coordonnées de page). La hauteur de la zone suit le texte.
+ */
+export interface CalloutAnn extends BaseAnn {
+  type: 'callout'
+  width: number
+  text: string
+  fontSize: number
+  /** Couleur du texte. */
+  color: string
+  /** Couleur du cadre et de la flèche. */
+  stroke: string
+  /** Fond de la zone (absent = transparent). */
+  background?: string
+  tx: number
+  ty: number
+}
+
+/** Marge intérieure d'une bulle (points). */
+export const CALLOUT_PAD = 6
+
 /** Note / commentaire épinglé. */
 export interface NoteAnn extends BaseAnn {
   type: 'note'
@@ -124,7 +146,7 @@ export interface ImageAnn extends BaseAnn {
 }
 
 export type Annotation =
-  | HighlightAnn | TextAnn | NoteAnn | ShapeAnn | RedactAnn | LineAnn
+  | HighlightAnn | TextAnn | CalloutAnn | NoteAnn | ShapeAnn | RedactAnn | LineAnn
   | InkAnn | StampAnn | ImageAnn
 
 export type AnnotationType = Annotation['type']
@@ -176,7 +198,7 @@ export function newId(): string {
 }
 
 export type Tool =
-  | 'select' | 'text-select' | 'hand' | 'highlight' | 'edit-text' | 'text' | 'note'
+  | 'select' | 'text-select' | 'hand' | 'highlight' | 'edit-text' | 'text' | 'callout' | 'note'
   | 'rect' | 'ellipse' | 'line' | 'arrow' | 'ink' | 'stamp' | 'image' | 'redact'
 
 export const PAGE_FORMATS = {
@@ -191,6 +213,7 @@ export type PageFormatId = keyof typeof PAGE_FORMATS
 export const ANN_LABELS: Record<AnnotationType, string> = {
   highlight: 'Surlignage',
   text: 'Texte',
+  callout: 'Bulle avec flèche',
   note: 'Commentaire',
   rect: 'Rectangle',
   ellipse: 'Ellipse',
@@ -223,6 +246,12 @@ export function annBounds(ann: Annotation): { x: number; y: number; width: numbe
     }
     case 'text':
       return { x: ann.x, y: ann.y, width: ann.width, height: ann.fontSize * 1.2 }
+    case 'callout': {
+      const h = ann.fontSize * 1.2 + CALLOUT_PAD * 2
+      const x0 = Math.min(ann.x, ann.tx)
+      const y0 = Math.min(ann.y, ann.ty)
+      return { x: x0, y: y0, width: Math.max(ann.x + ann.width, ann.tx) - x0, height: Math.max(ann.y + h, ann.ty) - y0 }
+    }
     case 'stamp':
       return { x: ann.x, y: ann.y, width: ann.text.length * ann.fontSize * 0.7 + 16, height: ann.fontSize + 16 }
     default:
@@ -256,6 +285,12 @@ export function rotateAnnotation90(ann: Annotation, H: number): Annotation {
     case 'stamp': {
       const b = annBounds(ann)
       return { ...ann, x: H - (b.y + b.height), y: b.x }
+    }
+    case 'callout': {
+      // La zone garde son sens de lecture ; seule sa position et la cible tournent
+      const h = ann.fontSize * 1.2 + CALLOUT_PAD * 2
+      const t = P(ann.tx, ann.ty)
+      return { ...ann, x: H - (ann.y + h), y: ann.x, tx: t.x, ty: t.y }
     }
     case 'highlight': {
       const rects = ann.rects?.map((r) => ({ x: ann.height - (r.y + r.height), y: r.x, width: r.height, height: r.width }))

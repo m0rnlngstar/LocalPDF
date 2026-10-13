@@ -3,6 +3,8 @@ import { useStudio, useCurrentPage, type RightPanel as PanelId } from '../store'
 import { getPageText, getPageTextItems, renderPage } from '../render'
 import { ANN_LABELS, annBounds, displaySize, type Annotation, type StudioPage } from '../types'
 import { FONT_FAMILIES, type FontFamily } from '../../lib/fonts'
+import { cssFont, longestLine } from '../textMeasure'
+import { CALLOUT_PAD } from '../types'
 import { getOcrQuality, recognizeCanvas, setOcrQuality, type OcrQuality } from '../../lib/ocr'
 import { ColorWell } from '../../components/ui/ColorWell'
 import { toast } from '../../components/ui/Toast'
@@ -139,6 +141,13 @@ function PropertiesPanel() {
         <>
           <Row label="Texte">
             <button className="btn btn-xs rounded-full" onClick={() => setEditingAnn(sel)}>Modifier le texte</button>
+            <button
+              className="btn btn-xs btn-ghost rounded-full"
+              title="Réduit la largeur de la zone à celle de la plus longue ligne"
+              onClick={() => set({ width: Math.max(24, longestLine(ann.text, cssFont(ann.fontSize, ann.fontFamily, ann.bold, ann.italic)) + 4) })}
+            >
+              Ajuster au texte
+            </button>
           </Row>
           <Row label="Police">
             <select className="select select-xs" value={ann.fontFamily ?? 'Helvetica'} onChange={(e) => set({ fontFamily: e.target.value as FontFamily })}>
@@ -167,6 +176,32 @@ function PropertiesPanel() {
             </label>
             {ann.background && <ColorWell size="sm" value={ann.background} onChange={(background) => set({ background })} title="Couleur de fond" />}
           </Row>
+        </>
+      )}
+
+      {ann.type === 'callout' && (
+        <>
+          <Row label="Texte">
+            <button className="btn btn-xs rounded-full" onClick={() => setEditingAnn(sel)}>Modifier le texte</button>
+            <button
+              className="btn btn-xs btn-ghost rounded-full"
+              title="Réduit la largeur de la bulle à celle de la plus longue ligne"
+              onClick={() => set({ width: Math.max(40, longestLine(ann.text, cssFont(ann.fontSize)) + CALLOUT_PAD * 2 + 4) })}
+            >
+              Ajuster au texte
+            </button>
+          </Row>
+          <Row label="Taille"><NumberInput value={ann.fontSize} min={6} max={48} onChange={(fontSize) => set({ fontSize })} /></Row>
+          <Row label="Texte"><ColorWell size="sm" value={ann.color} onChange={(color) => set({ color })} title="Couleur du texte" /></Row>
+          <Row label="Cadre et flèche"><ColorWell size="sm" value={ann.stroke} onChange={(stroke) => set({ stroke })} title="Couleur du cadre et de la flèche" /></Row>
+          <Row label="Fond">
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" className="checkbox checkbox-xs" checked={!!ann.background} onChange={(e) => set({ background: e.target.checked ? '#ffffff' : undefined })} />
+              Opaque
+            </label>
+            {ann.background && <ColorWell size="sm" value={ann.background} onChange={(background) => set({ background })} title="Couleur de fond" />}
+          </Row>
+          <p className="studio-hint">Déplacez la zone pour la placer ; faites glisser le point rond pour viser un autre endroit.</p>
         </>
       )}
 
@@ -316,7 +351,7 @@ function CommentsPanel() {
             <button className="btn btn-ghost btn-xs btn-square ml-auto" title="Supprimer" onClick={(e) => { e.stopPropagation(); remove(page.id, ann.id) }}><IconTrash /></button>
           </div>
           {ann.type === 'highlight' && ann.quote && <blockquote className="studio-quote">« {ann.quote} »</blockquote>}
-          {(ann.type === 'text' || ann.type === 'stamp') && <p className="studio-comment-text">{ann.text}</p>}
+          {(ann.type === 'text' || ann.type === 'callout' || ann.type === 'stamp') && <p className="studio-comment-text">{ann.text}</p>}
           {ann.type === 'note' ? (
             <textarea
               className="textarea textarea-xs w-full"

@@ -6,7 +6,7 @@ import {
   IconArrow, IconCircleShape, IconHighlighter, IconImage, IconLine, IconNote, IconPointer,
   IconEdit, IconSignature, IconSquare, IconStamp, IconType,
 } from '../../components/ui/icons'
-import { IconHand, IconRedact, IconTextSelect } from './icons'
+import { IconCallout, IconHand, IconRedact, IconTextSelect } from './icons'
 import { STAMP_PRESETS } from './RightPanel'
 
 export interface ToolDef {
@@ -30,6 +30,7 @@ export const TOOL_GROUPS: ToolDef[][] = [
   [
     { id: 'edit-text', label: 'Modifier un texte existant', key: 'E', icon: <IconEdit /> },
     { id: 'text', label: 'Ajouter du texte', key: 'T', icon: <IconType /> },
+    { id: 'callout', label: 'Bulle avec flèche (texte qui vise un endroit)', key: 'B', icon: <IconCallout /> },
   ],
   [
     { id: 'rect', label: 'Rectangle', key: 'R', icon: <IconSquare /> },
@@ -53,6 +54,7 @@ const HINTS: Partial<Record<Tool, string>> = {
   note: 'Cliquez pour épingler un commentaire',
   'edit-text': 'Cliquez sur une ligne de texte pour la corriger',
   text: 'Cliquez pour ajouter du texte',
+  callout: 'Cliquez sur l’endroit à viser, puis glissez jusqu’à l’emplacement du texte',
   rect: 'Glissez pour tracer',
   ellipse: 'Glissez pour tracer',
   line: 'Glissez pour tracer',
@@ -119,7 +121,7 @@ export function Toolbar() {
             </select>
           </>
         )}
-        {tool === 'text' && (
+        {(tool === 'text' || tool === 'callout') && (
           <>
             <ColorWell size="sm" value={opts.textColor} onChange={(textColor) => setOpts({ textColor })} title="Couleur du texte" />
             <select className="select select-xs w-16" value={opts.fontSize} onChange={(e) => setOpts({ fontSize: Number(e.target.value) })} title="Taille">

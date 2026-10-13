@@ -7,8 +7,9 @@ import { hexToRgb01, type FontFamily } from '../lib/fonts'
 import { makeFontLoader, wrapText } from '../lib/pdfExport'
 import { compressPdf, type CompressLevel } from '../lib/compress'
 import { getPageTextItems, renderPage } from './render'
+import { calloutAnchor } from './textMeasure'
 import {
-  annBounds, displaySize, totalRotation, ANN_LABELS,
+  annBounds, displaySize, totalRotation, ANN_LABELS, CALLOUT_PAD,
   type Annotation, type StudioPage, type Watermark,
 } from './types'
 
@@ -170,6 +171,40 @@ async function drawAnnotation(out: PDFDocument, page: PDFPage, H: number, ann: A
         const dx = ann.align === 'center' ? (ann.width - w) / 2 : ann.align === 'right' ? ann.width - w : 0
         page.drawText(line, {
           x: ann.x + dx, y: H - (ann.y + ann.fontSize * 0.85 + i * ann.fontSize * 1.15),
+          size: ann.fontSize, font, color: color(ann.color),
+        })
+      })
+      break
+    }
+    case 'callout': {
+      const font = await getFont()
+      const text = safeText(font, ann.text)
+      const inner = Math.max(10, ann.width - CALLOUT_PAD * 2)
+      const lines = wrapText(text, font, ann.fontSize, inner)
+      const h = lines.length * ann.fontSize * 1.15 + CALLOUT_PAD * 2
+      const anchor = calloutAnchor({ x: ann.x, y: ann.y, width: ann.width, height: h }, ann.tx, ann.ty)
+      if (anchor) {
+        const start = { x: anchor.x, y: H - anchor.y }
+        const end = { x: ann.tx, y: H - ann.ty }
+        page.drawLine({ start, end, thickness: 1.5, color: color(ann.stroke), lineCap: LineCapStyle.Round })
+        const angle = Math.atan2(end.y - start.y, end.x - start.x)
+        for (const side of [-1, 1]) {
+          const a = angle + Math.PI - side * (Math.PI / 7)
+          page.drawLine({
+            start: end, end: { x: end.x + 8 * Math.cos(a), y: end.y + 8 * Math.sin(a) },
+            thickness: 1.5, color: color(ann.stroke), lineCap: LineCapStyle.Round,
+          })
+        }
+      }
+      page.drawRectangle({
+        x: ann.x, y: H - ann.y - h, width: ann.width, height: h,
+        borderColor: color(ann.stroke), borderWidth: 1.2,
+        ...(ann.background ? { color: color(ann.background) } : {}),
+      })
+      lines.forEach((line, i) => {
+        page.drawText(line, {
+          x: ann.x + CALLOUT_PAD,
+          y: H - (ann.y + CALLOUT_PAD + ann.fontSize * 0.85 + i * ann.fontSize * 1.15),
           size: ann.fontSize, font, color: color(ann.color),
         })
       })
