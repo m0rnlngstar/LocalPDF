@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -37,12 +38,32 @@ function contentSecurityPolicy(): Plugin {
   }
 }
 
+/** Interrupteur unique : src/lib/features.ts (AI_ENABLED). */
+const AI_ENABLED = /export const AI_ENABLED\s*=\s*true/.test(readFileSync('src/lib/features.ts', 'utf8'))
+
+/**
+ * IA désactivée : le moteur (src/lib/llm.ts) est remplacé par sa version
+ * vide. WebLLM, transformers.js et leurs workers ne sont alors pas livrés.
+ */
+function withoutAi(): Plugin {
+  return {
+    name: 'localpdf-no-ai',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      if (AI_ENABLED || !/(^|\/)llm(\.ts)?$/.test(source)) return null
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true })
+      const id = resolved?.id.replace(/\\/g, '/')
+      return id?.endsWith('/src/lib/llm.ts') ? id.replace(/llm\.ts$/, 'llm.disabled.ts') : null
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   // GitHub Pages sert le site sous /LocalPDF/ : le workflow de déploiement
   // passe BASE_PATH ; en local, racine classique.
   base: process.env.BASE_PATH ?? '/',
-  plugins: [react(), tailwindcss(), contentSecurityPolicy()],
+  plugins: [withoutAi(), react(), tailwindcss(), contentSecurityPolicy()],
   server: {
     // Accès via `tailscale serve` (HTTPS requis pour WebGPU hors localhost)
     allowedHosts: ['.ts.net'],

@@ -8,6 +8,7 @@ import { makeFontLoader, wrapText } from '../lib/pdfExport'
 import { compressPdf, type CompressLevel } from '../lib/compress'
 import { getPageTextItems, renderPage } from './render'
 import { calloutAnchor } from './textMeasure'
+import { sanitizePageActions } from './pdfSanitize'
 import {
   annBounds, displaySize, totalRotation, ANN_LABELS, CALLOUT_PAD, TEXT_FRAME_PAD,
   type Annotation, type StudioPage, type Watermark,
@@ -424,6 +425,8 @@ export async function buildStudioPdf(
         if (intact) {
           // Copie directe : liens, champs de formulaire et métadonnées préservés
           const [copied] = await out.copyPages(await getSrc(src.docId), [src.pageIndex])
+          // Actions actives (JavaScript, lancement, envoi de formulaire…) retirées
+          sanitizePageActions(copied)
           out.addPage(copied)
           if (nativeComments) addNativeComments(out, copied, H, pageData.annotations)
           done++
