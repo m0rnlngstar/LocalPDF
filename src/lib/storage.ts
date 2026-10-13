@@ -128,6 +128,6 @@ export function debouncedSaver(key: string, delayMs = 800) {
   let timer: ReturnType<typeof setTimeout> | undefined
   return (value: unknown) => {
     clearTimeout(timer)
-    timer = setTimeout(() => void saveSession(key, value), delayMs)
+    timer = setTimeout(() => void saveSession(key, value).catch(() => {}), delayMs)
   }
 }

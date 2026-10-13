@@ -189,7 +189,12 @@ export const useStudio = create<StudioState>((set, get) => {
 
     hydrate: async () => {
       if (get().hydrated) return
-      const saved = await loadSession<PersistedState>(SESSION_KEY)
+      // Stockage indisponible (navigation privée stricte, stratégie d'entreprise…) :
+      // l'éditeur démarre quand même, simplement sans reprise de session
+      const saved = await loadSession<PersistedState>(SESSION_KEY).catch((err) => {
+        console.warn('Session locale illisible :', err)
+        return undefined
+      })
       set({
         hydrated: true,
         ...(saved?.pages?.length
