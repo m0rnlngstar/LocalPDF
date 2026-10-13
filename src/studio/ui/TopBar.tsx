@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useStudio } from '../store'
-import { addFiles, pickFiles, sendDocumentToTool, useDialogs } from '../actions'
-import { MODULES } from '../../store/appStore'
-import { BrandMark, ModuleIcon } from '../../components/ui/ModuleIcon'
+import { addFiles, pickFiles, useDialogs } from '../actions'
+import { BrandMark } from '../../components/ui/ModuleIcon'
+import { SidebarReopen } from '../../components/AppSidebar'
 import { ThemeController } from '../../components/ui/ThemeController'
 import { IconDownload, IconFilePlus, IconGrid, IconPlus, IconX } from '../../components/ui/icons'
 import { clearCacheAndReload } from '../../lib/storage'
 import {
   IconBook, IconComments, IconFolderOpen, IconMaximize, IconRedo, IconScanText, IconSearch, IconSidebar,
-  IconUndo, IconWand, IconZoomIn, IconZoomOut,
+  IconUndo, IconZoomIn, IconZoomOut,
 } from './icons'
 import { PT_TO_PX } from './Viewer'
 
@@ -65,34 +65,6 @@ export function FileMenu() {
         </MenuItem>
         <MenuItem onClick={() => openDialog('shortcuts')}>Raccourcis clavier</MenuItem>
         <li><a href="mailto:h.dupuis@co-pilotes.com?subject=LocalPDF%20%E2%80%93%20signalement%20de%20bug" onClick={closeMenus}>Signaler un bug…</a></li>
-      </ul>
-    </div>
-  )
-}
-
-export function ToolsMenu() {
-  return (
-    <div className="dropdown dropdown-end">
-      <button tabIndex={0} className="studio-menu-trigger"><IconWand /> <span className="hidden md:inline">Outils avancés</span></button>
-      <ul tabIndex={0} className="dropdown-content studio-menu studio-tools-menu z-50">
-        {MODULES.map((m) => (
-          <li key={m.id}>
-            <button
-              onClick={() => {
-                closeMenus()
-                void sendDocumentToTool(m.id)
-              }}
-            >
-              <span className={`nav-icon tone-${m.tone}`}><ModuleIcon module={m.id} /></span>
-              <span className="flex-1 text-left">
-                <strong>{m.label}</strong>
-                {m.badge && <em className="studio-badge">{m.badge}</em>}
-                <small>{m.desc}</small>
-              </span>
-            </button>
-          </li>
-        ))}
-        <li className="studio-tools-note">Le document ouvert est transmis à l’outil choisi.</li>
       </ul>
     </div>
   )
@@ -170,6 +142,7 @@ export function TopBar() {
   return (
     <header className="studio-topbar">
       <div className="studio-topbar-left">
+        <SidebarReopen />
         <BrandMark />
         <div className="studio-docname">
           <input value={name} aria-label="Nom du document" onChange={(e) => setName(e.target.value)} spellCheck={false} />
@@ -204,7 +177,6 @@ export function TopBar() {
         <button className={`studio-icon-btn ${rightPanel === 'search' ? 'is-active' : ''}`} title="Rechercher (Ctrl+F)" onClick={() => togglePanel('search')}><IconSearch /></button>
         <button className={`studio-icon-btn ${rightPanel === 'comments' ? 'is-active' : ''}`} title="Commentaires" onClick={() => togglePanel('comments')}><IconComments /></button>
         <button className={`studio-icon-btn ${rightPanel === 'ocr' ? 'is-active' : ''}`} title="OCR (reconnaissance de texte)" onClick={() => togglePanel('ocr')}><IconScanText /></button>
-        <ToolsMenu />
         <button className="btn btn-primary btn-sm rounded-full gap-1.5" onClick={() => openDialog('export')}>
           <IconDownload /> <span className="hidden sm:inline">Exporter</span>
         </button>

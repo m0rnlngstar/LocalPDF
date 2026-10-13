@@ -48,19 +48,42 @@ export const MODULES: ModuleMeta[] = [
 ]
 
 const THEME_KEY = 'pdf-toolkit-theme'
+const SIDEBAR_KEY = 'localpdf-sidebar-open'
+
+function readSidebar(): boolean {
+  try {
+    // Affiché par défaut ; replié d'office sur petit écran
+    const saved = localStorage.getItem(SIDEBAR_KEY)
+    return saved === null ? window.innerWidth >= 900 : saved === '1'
+  } catch {
+    return true
+  }
+}
 
 interface AppState {
   /** Outil avancé ouvert en surimpression (null = éditeur seul). */
   activeTool: ModuleId | null
   theme: string
+  /** Panneau latéral des outils avancés affiché. */
+  sidebarOpen: boolean
   openTool: (m: ModuleId | null) => void
+  setSidebarOpen: (open: boolean) => void
   setTheme: (t: string) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
   activeTool: null,
   theme: localStorage.getItem(THEME_KEY) ?? 'light',
+  sidebarOpen: readSidebar(),
   openTool: (activeTool) => set({ activeTool }),
+  setSidebarOpen: (sidebarOpen) => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? '1' : '0')
+    } catch {
+      // préférence non mémorisée
+    }
+    set({ sidebarOpen })
+  },
   setTheme: (t) => {
     localStorage.setItem(THEME_KEY, t)
     document.documentElement.setAttribute('data-theme', t)

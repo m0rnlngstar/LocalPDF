@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { MODULES, useAppStore } from './store/appStore'
 import { ToastContainer } from './components/ui/Toast'
 import { BugReportButton } from './components/ui/BugReportButton'
+import { AppSidebar, SidebarReopen } from './components/AppSidebar'
 import { ModuleIcon } from './components/ui/ModuleIcon'
 import { moduleComponents } from './modules/registry'
 import { IconArrowLeft } from './studio/ui/icons'
@@ -27,6 +28,7 @@ function ToolOverlay() {
   return (
     <div className="tool-overlay" role="dialog" aria-modal="true" aria-label={meta.label}>
       <header className="tool-overlay-head">
+        <SidebarReopen />
         <button className="btn btn-sm btn-ghost rounded-full gap-1.5" onClick={() => openTool(null)}>
           <IconArrowLeft /> Retour à l’éditeur
         </button>
@@ -52,6 +54,7 @@ export default function App() {
         <Studio />
       </Suspense>
       <ToolOverlay />
+      <AppSidebar />
       <BugReportButton />
       <ToastContainer />
     </>

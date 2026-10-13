@@ -5,6 +5,7 @@
 .studio {
   position: fixed;
   inset: 0;
+  left: var(--rail-w);
   display: flex;
   flex-direction: column;
   background: var(--app-canvas);
@@ -612,6 +613,7 @@
 .tool-overlay {
   position: fixed;
   inset: 0;
+  left: var(--rail-w);
   z-index: 80;
   display: flex;
   flex-direction: column;

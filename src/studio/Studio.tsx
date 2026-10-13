@@ -10,6 +10,7 @@ import { StartScreen } from './ui/StartScreen'
 import { ExportDialog, Modal, NewDocDialog } from './ui/Dialogs'
 import { AddPagesDialog } from './ui/AddPagesDialog'
 import { BrandMark } from '../components/ui/ModuleIcon'
+import { SidebarReopen } from '../components/AppSidebar'
 import { ThemeController } from '../components/ui/ThemeController'
 import { preloadCanvasFonts } from '../lib/fonts'
 import { useAppStore } from '../store/appStore'
@@ -234,6 +235,7 @@ export default function Studio() {
         <>
           <header className="studio-topbar is-home">
             <div className="studio-topbar-left">
+              <SidebarReopen />
               <BrandMark />
               <strong className="studio-brand">LocalPDF</strong>
             </div>
