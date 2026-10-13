@@ -11,7 +11,6 @@ import { ExportDialog, Modal, NewDocDialog } from './ui/Dialogs'
 import { AddPagesDialog } from './ui/AddPagesDialog'
 import { BrandMark } from '../components/ui/ModuleIcon'
 import { ThemeController } from '../components/ui/ThemeController'
-import { BugReportButton } from '../components/ui/BugReportButton'
 import { preloadCanvasFonts } from '../lib/fonts'
 import { useAppStore } from '../store/appStore'
 import './studio.css'
@@ -240,7 +239,6 @@ export default function Studio() {
             </div>
             <div className="studio-topbar-right">
               <span className="studio-private">🔒 Privé · 100 % local</span>
-              <BugReportButton />
               <ThemeController />
             </div>
           </header>

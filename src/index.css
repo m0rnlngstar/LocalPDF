@@ -2387,3 +2387,34 @@ h6 {
   .split-zone-main { min-height: 25rem; }
   .split-zone-stage { min-height: 22rem; padding: 0.75rem; }
 }
+
+/* Bouton flottant « Un problème ? Un bug ? » */
+.bug-fab {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-base-content);
+  background: var(--color-base-100);
+  border: 1px solid var(--app-border);
+  box-shadow: 0 6px 20px color-mix(in oklab, #000 14%, transparent);
+  opacity: 0.85;
+  transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.bug-fab:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  color: var(--app-primary);
+  box-shadow: 0 10px 28px color-mix(in oklab, #000 18%, transparent);
+}
+@media (max-width: 640px) {
+  .bug-fab span { display: none; }
+  .bug-fab { padding: 0.55rem; }
+}

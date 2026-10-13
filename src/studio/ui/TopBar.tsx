@@ -4,7 +4,6 @@ import { addFiles, pickFiles, sendDocumentToTool, useDialogs } from '../actions'
 import { MODULES } from '../../store/appStore'
 import { BrandMark, ModuleIcon } from '../../components/ui/ModuleIcon'
 import { ThemeController } from '../../components/ui/ThemeController'
-import { BugReportButton } from '../../components/ui/BugReportButton'
 import { IconDownload, IconFilePlus, IconGrid, IconPlus, IconX } from '../../components/ui/icons'
 import { clearCacheAndReload } from '../../lib/storage'
 import {
@@ -209,7 +208,6 @@ export function TopBar() {
         <button className="btn btn-primary btn-sm rounded-full gap-1.5" onClick={() => openDialog('export')}>
           <IconDownload /> <span className="hidden sm:inline">Exporter</span>
         </button>
-        <BugReportButton compact />
         <ThemeController />
       </div>
     </header>

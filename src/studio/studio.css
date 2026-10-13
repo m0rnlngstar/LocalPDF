@@ -715,17 +715,3 @@
   font-size: 0.8rem;
   text-align: center;
 }
-
-/* Bouton « Signaler un bug » */
-.bug-report-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  height: 2rem;
-  padding: 0 0.55rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  color: var(--app-muted);
-  white-space: nowrap;
-}
-.bug-report-btn:hover { background: var(--color-base-200); color: var(--color-base-content); }

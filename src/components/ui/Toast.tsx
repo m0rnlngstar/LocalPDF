@@ -107,7 +107,7 @@ export function ToastContainer() {
   return (
     // Région live persistante : les messages insérés sont annoncés aux
     // lecteurs d'écran sans déplacer le focus.
-    <div role="status" aria-live="polite" className="toast toast-end toast-bottom z-50">
+    <div role="status" aria-live="polite" className="toast toast-end toast-bottom z-[95] mb-11">
       <AnimatePresence>
         {toasts.map((t) => (
           <ToastCard key={t.id} item={t} onDismiss={() => dismiss(t.id)} />

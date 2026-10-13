@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { MODULES, useAppStore } from './store/appStore'
 import { ToastContainer } from './components/ui/Toast'
+import { BugReportButton } from './components/ui/BugReportButton'
 import { ModuleIcon } from './components/ui/ModuleIcon'
 import { moduleComponents } from './modules/registry'
 import { IconArrowLeft } from './studio/ui/icons'
@@ -51,6 +52,7 @@ export default function App() {
         <Studio />
       </Suspense>
       <ToolOverlay />
+      <BugReportButton />
       <ToastContainer />
     </>
   )
