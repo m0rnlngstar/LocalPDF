@@ -1,13 +1,9 @@
 import { create } from 'zustand'
 import { AI_ENABLED } from '../lib/features'
 
-/**
- * Outils avancés : modules autonomes ouverts PAR-DESSUS l'éditeur (Studio).
- * Les fonctions courantes (éditer, annoter, organiser, fusionner, convertir,
- * compresser, OCR) sont intégrées directement à l'éditeur.
- */
 export type ModuleId =
-  | 'scanner' | 'split' | 'smart-split' | 'smart-merge' | 'facturx' | 'docchat'
+  | 'home' | 'scanner' | 'create' | 'convert' | 'edit' | 'merge' | 'split' | 'compress'
+  | 'smart-split' | 'smart-merge' | 'ocr' | 'facturx' | 'docchat'
 
 export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
 
@@ -15,81 +11,84 @@ export interface ModuleMeta {
   id: ModuleId
   label: string
   desc: string
+  category: 'Créer' | 'Organiser' | 'Analyser' | 'IA locale' | 'Général'
   tone: ModuleTone
   badge?: string
-  /** L'outil peut recevoir le document ouvert dans l'éditeur. */
-  acceptsDocument: boolean
 }
 
 const ALL_MODULES: ModuleMeta[] = [
   {
-    id: 'scanner', label: 'Scanner un document', tone: 'emerald', acceptsDocument: false,
-    desc: 'Photographiez plusieurs pages, redressez-les et créez un PDF recherchable.',
+    id: 'home', label: 'Accueil', category: 'Général', tone: 'violet',
+    desc: 'Retrouvez tous vos outils PDF',
   },
   {
-    id: 'split', label: 'Isoler des tickets', tone: 'emerald', acceptsDocument: true,
-    desc: 'Découpez plusieurs tickets ou reçus présents sur une même feuille.',
+    id: 'scanner', label: 'Scanner un document', category: 'Créer', tone: 'emerald', badge: 'Nouveau',
+    desc: 'Photographiez plusieurs pages, améliorez-les et créez un PDF recherchable avec OCR local.',
   },
   {
-    id: 'smart-split', label: 'Découpage intelligent', tone: 'violet', badge: 'IA locale', acceptsDocument: true,
-    desc: 'Retrouvez les documents individuels d’un scan en vrac (OCR, motifs, IA locale).',
+    id: 'create', label: 'Créateur PDF', category: 'Créer', tone: 'violet',
+    desc: 'Créez un PDF de zéro : texte, images, formes, filigrane, multi-pages.',
   },
   {
-    id: 'smart-merge', label: 'Fusion intelligente', tone: 'cyan', badge: 'IA locale', acceptsDocument: true,
-    desc: 'Réassemblez des fichiers scannés dans le bon ordre automatiquement.',
+    id: 'convert', label: 'Convertisseur PDF', category: 'Créer', tone: 'amber', badge: 'Nouveau',
+    desc: 'Transformez JPG, PNG, HEIC, DOCX, TXT ou Markdown en un seul PDF, dans l’ordre voulu.',
   },
   {
-    id: 'facturx', label: 'Vérifier Factur-X', tone: 'rose', badge: 'Conformité', acceptsDocument: true,
-    desc: 'Contrôlez une facture électronique et lisez ses données embarquées.',
+    id: 'edit', label: 'Éditeur / Annotateur', category: 'Créer', tone: 'blue', badge: 'Populaire',
+    desc: 'Réorganisez les pages, surlignez, tamponnez, signez et annotez un PDF existant.',
   },
   {
-    id: 'docchat', label: 'Interroger le document', tone: 'blue', badge: 'IA locale', acceptsDocument: true,
-    desc: 'Posez vos questions sur le PDF à une IA 100 % locale.',
+    id: 'merge', label: 'Fusionner des PDF', category: 'Organiser', tone: 'cyan',
+    desc: 'Assemblez plusieurs PDF et images en un seul document, dans l’ordre voulu.',
+  },
+  {
+    id: 'split', label: 'Découper un PDF', category: 'Organiser', tone: 'emerald',
+    desc: 'Découpez par pages ou isolez plusieurs tickets dans une même feuille.',
+  },
+  {
+    id: 'compress', label: 'Compresser un PDF', category: 'Organiser', tone: 'rose', badge: 'Nouveau',
+    desc: 'Réduisez le poids d’un PDF en ré-encodant ses images, sans rien envoyer sur un serveur.',
+  },
+  {
+    id: 'smart-split', label: 'Découpage intelligent', category: 'IA locale', tone: 'violet', badge: 'IA locale',
+    desc: 'Retrouvez les documents individuels d’un scan en vrac : OCR, motifs, pages blanches et IA locale.',
+  },
+  {
+    id: 'smart-merge', label: 'Fusion intelligente', category: 'IA locale', tone: 'cyan', badge: 'IA locale',
+    desc: 'Réassemblez des fichiers scannés dans le bon ordre : numéros de page, chaînage visuel et IA locale.',
+  },
+  {
+    id: 'ocr', label: 'Reconnaissance OCR', category: 'Analyser', tone: 'amber',
+    desc: 'Extrayez le texte d’un scan ou d’une photo, et exportez un PDF cherchable.',
+  },
+  {
+    id: 'facturx', label: 'Vérifier Factur-X', category: 'Analyser', tone: 'rose', badge: 'Conformité',
+    desc: 'Contrôlez la conformité d’une facture électronique et lisez ses données embarquées.',
+  },
+  {
+    id: 'docchat', label: 'Interroger un document', category: 'IA locale', tone: 'blue', badge: 'IA locale',
+    desc: 'Posez vos questions sur un PDF à une IA 100 % locale — rien ne quitte votre machine.',
   },
 ]
 
-/** Outils proposés : sans l'IA locale, « Interroger le document » est masqué. */
+/** Outils proposés : sans l'IA locale, « Interroger un document » est masqué. */
 export const MODULES: ModuleMeta[] = AI_ENABLED
   ? ALL_MODULES
   : ALL_MODULES.filter((m) => m.id !== 'docchat').map((m) => (m.badge === 'IA locale' ? { ...m, badge: undefined } : m))
 
 const THEME_KEY = 'pdf-toolkit-theme'
-const SIDEBAR_KEY = 'localpdf-sidebar-open'
-
-function readSidebar(): boolean {
-  try {
-    // Affiché par défaut ; replié d'office sur petit écran
-    const saved = localStorage.getItem(SIDEBAR_KEY)
-    return saved === null ? window.innerWidth >= 900 : saved === '1'
-  } catch {
-    return true
-  }
-}
 
 interface AppState {
-  /** Outil avancé ouvert en surimpression (null = éditeur seul). */
-  activeTool: ModuleId | null
+  activeModule: ModuleId
   theme: string
-  /** Panneau latéral des outils avancés affiché. */
-  sidebarOpen: boolean
-  openTool: (m: ModuleId | null) => void
-  setSidebarOpen: (open: boolean) => void
+  setActiveModule: (m: ModuleId) => void
   setTheme: (t: string) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  activeTool: null,
+  activeModule: 'home',
   theme: localStorage.getItem(THEME_KEY) ?? 'light',
-  sidebarOpen: readSidebar(),
-  openTool: (activeTool) => set({ activeTool }),
-  setSidebarOpen: (sidebarOpen) => {
-    try {
-      localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? '1' : '0')
-    } catch {
-      // préférence non mémorisée
-    }
-    set({ sidebarOpen })
-  },
+  setActiveModule: (m) => set({ activeModule: m }),
   setTheme: (t) => {
     localStorage.setItem(THEME_KEY, t)
     document.documentElement.setAttribute('data-theme', t)

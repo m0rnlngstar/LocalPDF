@@ -7,20 +7,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 export type PdfJsDocument = pdfjsLib.PDFDocumentProxy
 
 /** Ouvre un PDF depuis des octets (copie interne, le buffer source reste utilisable). */
-export async function openPdf(data: ArrayBuffer | Uint8Array, password?: string): Promise<PdfJsDocument> {
+export async function openPdf(data: ArrayBuffer | Uint8Array): Promise<PdfJsDocument> {
   const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data.slice(0))
-  // Ressources servies localement (public/pdfjs) : sans les décodeurs wasm,
-  // les scans JBIG2 / JPEG 2000 s'affichent en page blanche.
-  const base = `${import.meta.env.BASE_URL}pdfjs/`
-  return pdfjsLib.getDocument({
-    data: bytes,
-    password,
-    wasmUrl: `${base}wasm/`,
-    cMapUrl: `${base}cmaps/`,
-    cMapPacked: true,
-    standardFontDataUrl: `${base}standard_fonts/`,
-    iccUrl: `${base}iccs/`,
-  }).promise
+  return pdfjsLib.getDocument({ data: bytes }).promise
 }
 
 /**
@@ -40,9 +29,4 @@ export async function renderPageToCanvas(
   const ctx = canvas.getContext('2d')!
   await page.render({ canvas, canvasContext: ctx, viewport }).promise
   return canvas
-}
-
-/** Erreur pdf.js : mot de passe requis ou incorrect. */
-export function isPasswordError(err: unknown): boolean {
-  return !!err && typeof err === 'object' && (err as { name?: string }).name === 'PasswordException'
 }

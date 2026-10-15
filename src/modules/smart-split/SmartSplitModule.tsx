@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AI_ENABLED } from '../../lib/features'
-import { takeHandoff } from '../../studio/handoff'
 import {
   analyzeDocument,
   buildSegments,
@@ -164,19 +163,6 @@ export default function SmartSplitModule() {
     setConfig(next)
     localStorage.setItem(CONFIG_KEY, JSON.stringify(next))
   }
-
-  // Document transmis par l'éditeur (menu « Outils avancés »)
-
-  useEffect(() => {
-
-    const files = takeHandoff('smart-split')
-
-    if (files?.length) void handleFiles(files)
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  }, [])
-
 
   async function handleFiles(files: File[]) {
     const file = files[0]
@@ -458,7 +444,7 @@ export default function SmartSplitModule() {
                 disabled={!AI_ENABLED}
                 onChange={(e) => updateConfig({ useLlm: e.target.checked })}
               />
-              {!AI_ENABLED && <span className="badge badge-ghost badge-sm">désactivée</span>}
+              {!AI_ENABLED && <span className="badge badge-ghost badge-sm">désactivée pour le moment</span>}
               🧩 Vérification des coupures par IA locale
             </label>
             {config.useLlm && (

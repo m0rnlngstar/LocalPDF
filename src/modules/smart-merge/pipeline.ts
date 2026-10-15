@@ -1,7 +1,7 @@
 import { openPdf, type PdfJsDocument } from '../../lib/pdfjs'
 import { recognizeCanvas } from '../../lib/ocr'
 import { computePhash, hammingDistance } from '../smart-split/pipeline'
-import type { MergeItem } from './mergeItems'
+import type { MergeItem } from '../merge/store'
 import { getMergeVerifier } from './hooks'
 
 /**

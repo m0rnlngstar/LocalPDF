@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { takeHandoff } from '../../studio/handoff'
 import { openPdf } from '../../lib/pdfjs'
 import { exportSegments, parseRanges, type Segment } from './splitExport'
 import { FileDropzone } from '../../components/ui/FileDropzone'
@@ -35,19 +34,6 @@ export default function SplitModule() {
   const [cropZones, setCropZones] = useState<CropZone[]>([])
   const [exporting, setExporting] = useState(false)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-
-  // Document transmis par l'éditeur (menu « Outils avancés »)
-
-  useEffect(() => {
-
-    const files = takeHandoff('split')
-
-    if (files?.length) void handleFiles(files)
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  }, [])
-
 
   async function handleFiles(files: File[]) {
     const file = files[0]

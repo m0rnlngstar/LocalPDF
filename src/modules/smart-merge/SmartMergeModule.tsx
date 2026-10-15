@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AI_ENABLED } from '../../lib/features'
-import { openInStudio, takeHandoff } from '../../studio/handoff'
 import {
   DndContext,
   PointerSensor,
@@ -20,9 +19,9 @@ import {
   type ItemAnalysis,
   type SmartMergeConfig,
 } from './pipeline'
-import { readFilesAsMergeItems, buildMergedPdf, type MergeItem } from './mergeItems'
+import { readFilesAsMergeItems, buildMergedPdf, type MergeItem } from '../merge/store'
 import { openPdf } from '../../lib/pdfjs'
-import { downloadBytes } from '../../lib/pdfExport'
+import { downloadBytes } from '../create/exportPdf'
 import { FileDropzone } from '../../components/ui/FileDropzone'
 import { SmartMergeHelp } from './HelpDialog'
 import { createLlmVerifier, setMergeVerifier } from './hooks'
@@ -154,19 +153,6 @@ export default function SmartMergeModule() {
     setConfig(next)
     localStorage.setItem(CONFIG_KEY, JSON.stringify(next))
   }
-
-  // Document transmis par l'éditeur (menu « Outils avancés »)
-
-  useEffect(() => {
-
-    const files = takeHandoff('smart-merge')
-
-    if (files?.length) void handleFiles(files)
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  }, [])
-
 
   async function handleFiles(files: File[]) {
     setBusy(true)
@@ -344,14 +330,6 @@ export default function SmartMergeModule() {
             Analyser l'ordre
           </button>
           <button
-            className="btn btn-sm btn-ghost rounded-full"
-            onClick={() => void buildMergedPdf(items).then((b) => openInStudio(b, 'fusion-intelligente'))}
-            disabled={exporting || items.length === 0}
-            title="Ouvrir le résultat dans l'éditeur pour le retoucher"
-          >
-            Ouvrir dans l’éditeur
-          </button>
-          <button
             className="btn btn-sm btn-primary rounded-full shadow-md gap-1.5"
             onClick={() => void handleExport()}
             disabled={exporting || items.length === 0}
@@ -447,8 +425,8 @@ export default function SmartMergeModule() {
                 disabled={!AI_ENABLED}
                 onChange={(e) => updateConfig({ useLlm: e.target.checked })}
               />
-              🧩 Vérification des jointures par IA locale
               {!AI_ENABLED && <span className="badge badge-ghost badge-sm">désactivée pour le moment</span>}
+              🧩 Vérification des jointures par IA locale
             </label>
             {config.useLlm && (
               <select

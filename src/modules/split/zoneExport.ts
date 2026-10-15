@@ -1,6 +1,7 @@
+import { sanitizePageActions } from '../../lib/pdfSanitize'
 import { PDFDocument, type PDFPage } from 'pdf-lib'
 import JSZip from 'jszip'
-import { downloadBytes } from '../../lib/pdfExport'
+import { downloadBytes } from '../create/exportPdf'
 
 export interface CropZone {
   id: string
@@ -73,6 +74,7 @@ export function normalizedZoneToPdfBox(page: PDFPage, zone: CropZone): PdfBox {
 async function buildZonePdf(source: PDFDocument, zone: CropZone) {
   const output = await PDFDocument.create()
   const [page] = await output.copyPages(source, [zone.page])
+  sanitizePageActions(page)
   const box = normalizedZoneToPdfBox(page, zone)
   page.setMediaBox(box.x, box.y, box.width, box.height)
   page.setCropBox(box.x, box.y, box.width, box.height)

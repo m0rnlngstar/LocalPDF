@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { takeHandoff } from '../../studio/handoff'
 import { openPdf } from '../../lib/pdfjs'
 import { recognizeCanvas } from '../../lib/ocr'
 import {
@@ -122,19 +121,6 @@ export default function DocChatModule() {
     setConfig(next)
     localStorage.setItem(CONFIG_KEY, JSON.stringify(next))
   }
-
-  // Document transmis par l'éditeur (menu « Outils avancés »)
-
-  useEffect(() => {
-
-    const files = takeHandoff('docchat')
-
-    if (files?.length) void handleFiles(files)
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  }, [])
-
 
   async function handleFiles(files: File[]) {
     const file = files[0]

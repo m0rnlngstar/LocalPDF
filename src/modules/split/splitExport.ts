@@ -1,6 +1,7 @@
+import { sanitizePageActions } from '../../lib/pdfSanitize'
 import { PDFDocument } from 'pdf-lib'
 import JSZip from 'jszip'
-import { downloadBytes } from '../../lib/pdfExport'
+import { downloadBytes } from '../create/exportPdf'
 
 /**
  * Export de segments d'un PDF : un fichier par segment.
@@ -19,7 +20,7 @@ export async function buildSubsetPdf(srcBytes: ArrayBuffer, pageIndices: number[
   const src = await PDFDocument.load(srcBytes)
   const out = await PDFDocument.create()
   const copied = await out.copyPages(src, pageIndices)
-  for (const p of copied) out.addPage(p)
+  for (const p of copied) { sanitizePageActions(p); out.addPage(p) }
   return out.save()
 }
 
@@ -44,7 +45,7 @@ export async function exportSegments(
   for (const seg of segments) {
     const out = await PDFDocument.create()
     const copied = await out.copyPages(src, seg.pages)
-    for (const p of copied) out.addPage(p)
+    for (const p of copied) { sanitizePageActions(p); out.addPage(p) }
     zip.file(`${seg.name}.pdf`, await out.save())
     done++
     onProgress?.(done, segments.length)
