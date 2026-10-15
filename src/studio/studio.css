@@ -628,13 +628,14 @@
   border-bottom: 1px solid var(--app-border);
 }
 .tool-overlay-head h2 { font-size: 1rem; font-weight: 600; }
-.tool-overlay-body { flex: 1; overflow: auto; }
+.tool-overlay-body { flex: 1; overflow: auto; padding: clamp(1rem, 2.4vw, 2.25rem); }
 
 @media (max-width: 900px) {
   .studio-thumbs { display: none; }
   .studio-right { position: absolute; right: 0; top: 6.5rem; bottom: 0; z-index: 25; box-shadow: var(--app-shadow); }
   .studio-topbar { flex-wrap: wrap; }
   .studio-tool-hint { display: none; }
+  .tool-overlay-body { padding: 0.85rem; }
 }
 
 /* Aperçu agrandi au survol d'une miniature */

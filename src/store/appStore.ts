@@ -7,6 +7,7 @@ import { AI_ENABLED } from '../lib/features'
  * compresser, OCR) sont intégrées directement à l'éditeur.
  */
 export type ModuleId =
+  | 'convert' | 'merge' | 'compress'
   | 'scanner' | 'split' | 'smart-split' | 'smart-merge' | 'facturx' | 'docchat'
 
 export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
@@ -19,9 +20,23 @@ export interface ModuleMeta {
   badge?: string
   /** L'outil peut recevoir le document ouvert dans l'éditeur. */
   acceptsDocument: boolean
+  /** Module rapide (traitement par lot, sans passer par l'éditeur). */
+  quick?: boolean
 }
 
 const ALL_MODULES: ModuleMeta[] = [
+  {
+    id: 'convert', label: 'Convertir en PDF', tone: 'amber', acceptsDocument: false, quick: true,
+    desc: 'Images, HEIC, Word, TXT ou Markdown en PDF, par lot : un PDF unique ou un PDF par fichier (nom d’origine conservé).',
+  },
+  {
+    id: 'merge', label: 'Fusionner des PDF', tone: 'cyan', acceptsDocument: false, quick: true,
+    desc: 'Assemblez plusieurs PDF et images en un seul document, dans l’ordre voulu.',
+  },
+  {
+    id: 'compress', label: 'Compresser un PDF', tone: 'rose', acceptsDocument: false, quick: true,
+    desc: 'Réduisez le poids d’un PDF en ré-encodant ses images, sans rien envoyer sur un serveur.',
+  },
   {
     id: 'scanner', label: 'Scanner un document', tone: 'emerald', acceptsDocument: false,
     desc: 'Photographiez plusieurs pages, redressez-les et créez un PDF recherchable.',

@@ -3,6 +3,9 @@ import type { ModuleId } from '../store/appStore'
 
 // Chaque outil avancé est chargé en lazy : on ne paie tesseract/IA qu'à l'usage.
 const moduleImporters: Record<ModuleId, () => Promise<{ default: React.ComponentType }>> = {
+  convert: () => import('./convert/ConvertModule'),
+  merge: () => import('./merge/MergeModule'),
+  compress: () => import('./compress/CompressModule'),
   scanner: () => import('./scanner/ScannerModule'),
   docchat: () => import('./docchat/DocChatModule'),
   split: () => import('./split/SplitModule'),

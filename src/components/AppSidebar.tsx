@@ -37,6 +37,31 @@ export function SidebarReopen() {
   )
 }
 
+function RailItem({ id }: { id: ModuleId }) {
+  const activeTool = useAppStore((s) => s.activeTool)
+  const openTool = useAppStore((s) => s.openTool)
+  const m = MODULES.find((item) => item.id === id)!
+  return (
+    <button
+      className={`app-rail-item ${activeTool === m.id ? 'is-active' : ''}`}
+      title={m.desc}
+      onMouseEnter={() => void preloadModule(m.id)}
+      onClick={() => {
+        if (activeTool === m.id) return
+        // Modules rapides : traitement par lot, le document de l'éditeur n'est pas transmis
+        if (m.acceptsDocument) openWithDocument(m.id)
+        else openTool(m.id)
+      }}
+    >
+      <span className={`nav-icon tone-${m.tone}`}><ModuleIcon module={m.id} /></span>
+      <span className="app-rail-label">
+        <strong>{m.label}</strong>
+        {m.badge && <em>{m.badge}</em>}
+      </span>
+    </button>
+  )
+}
+
 export function AppSidebar() {
   const open = useAppStore((s) => s.sidebarOpen)
   const setOpen = useAppStore((s) => s.setSidebarOpen)
@@ -65,25 +90,18 @@ export function AppSidebar() {
           <span className="app-rail-label"><strong>Éditeur PDF</strong><small>Lire, annoter, organiser, exporter</small></span>
         </button>
 
+        <p className="app-rail-group">Modules rapides</p>
+        {MODULES.filter((m) => m.quick).map((m) => (
+          <RailItem key={m.id} id={m.id} />
+        ))}
+
         <p className="app-rail-group">Outils avancés</p>
-        {MODULES.map((m) => (
-          <button
-            key={m.id}
-            className={`app-rail-item ${activeTool === m.id ? 'is-active' : ''}`}
-            title={m.desc}
-            onMouseEnter={() => void preloadModule(m.id)}
-            onClick={() => (activeTool === m.id ? undefined : openWithDocument(m.id))}
-          >
-            <span className={`nav-icon tone-${m.tone}`}><ModuleIcon module={m.id} /></span>
-            <span className="app-rail-label">
-              <strong>{m.label}</strong>
-              {m.badge && <em>{m.badge}</em>}
-            </span>
-          </button>
+        {MODULES.filter((m) => !m.quick).map((m) => (
+          <RailItem key={m.id} id={m.id} />
         ))}
       </nav>
 
-      <p className="app-rail-note">Le document ouvert dans l’éditeur est transmis à l’outil choisi.</p>
+      <p className="app-rail-note">Outils avancés : le document ouvert dans l’éditeur leur est transmis. Les modules rapides traitent vos fichiers par lot.</p>
     </aside>
   )
 }
