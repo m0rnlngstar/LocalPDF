@@ -42,6 +42,8 @@ interface ClipboardAnn {
 
 interface StudioState extends PersistedState {
   hydrated: boolean
+  /** Session précédente trouvée au démarrage : en attente du choix « reprendre / repartir de zéro ». */
+  pendingResume: PersistedState | null
   tool: Tool
   toolOptions: ToolOptions
   /** Pages sélectionnées dans la barre de miniatures / l'organiseur. */
@@ -64,6 +66,10 @@ interface StudioState extends PersistedState {
   clipboard: ClipboardAnn | null
 
   hydrate: () => Promise<void>
+  /** Restaure la session précédente proposée au démarrage. */
+  resumeSession: () => void
+  /** Écarte la session précédente : l'éditeur repart vide. */
+  discardSession: () => void
   /** Remplace (ou complète) le document courant par des pages préparées. */
   insertPages: (pages: StudioPage[], docs: Record<string, ArrayBuffer>, at?: number, name?: string) => void
   newDocument: (size: { width: number; height: number }, count: number, name?: string) => void
@@ -171,6 +177,7 @@ export const useStudio = create<StudioState>((set, get) => {
     watermark: null,
     currentPageId: null,
     hydrated: false,
+    pendingResume: null,
     tool: 'select',
     toolOptions: loadToolOptions(),
     selectedPageIds: [],
@@ -195,9 +202,16 @@ export const useStudio = create<StudioState>((set, get) => {
         console.warn('Session locale illisible :', err)
         return undefined
       })
+      // Session précédente : on demande d'abord s'il faut la reprendre
+      set({ hydrated: true, pendingResume: saved?.pages?.length ? saved : null })
+    },
+
+    resumeSession: () => {
+      const saved = get().pendingResume
+      if (!saved) return
       set({
-        hydrated: true,
-        ...(saved?.pages?.length
+        pendingResume: null,
+        ...(get().pages.length === 0
           ? {
               docs: saved.docs,
               // Anciennes sessions : mot de passe retiré du stockage, gardé en mémoire
@@ -213,7 +227,14 @@ export const useStudio = create<StudioState>((set, get) => {
       })
     },
 
+    discardSession: () => {
+      set({ pendingResume: null })
+      get().closeDocument()
+    },
+
     insertPages: (newPages, newDocs, at, name) => {
+      // Fichiers ouverts sans répondre à la reprise : la session précédente est abandonnée
+      if (get().pendingResume) set({ pendingResume: null })
       const { pages, docs } = get()
       const pos = at ?? pages.length
       const next = [...pages]
@@ -234,7 +255,7 @@ export const useStudio = create<StudioState>((set, get) => {
         annotations: [],
       }))
       set({
-        docs: {}, pages, name, watermark: null, currentPageId: pages[0].id,
+        docs: {}, pages, name, watermark: null, currentPageId: pages[0].id, pendingResume: null,
         selectedPageIds: [], selectedAnn: null, past: [], future: [], view: 'read', tool: 'text',
       })
       persist()

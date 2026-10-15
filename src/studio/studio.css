@@ -61,6 +61,18 @@
 .studio-docname input:hover { border-color: var(--app-border); }
 .studio-docname input:focus { outline: none; border-color: var(--app-primary); background: var(--color-base-100); }
 .studio-menubar { display: flex; gap: 0.15rem; }
+/* « Recommencer » : à côté du menu Fichier, discret mais toujours visible */
+.studio-restart {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.4rem;
+  color: var(--app-muted);
+}
+.studio-restart svg { width: 13px; height: 13px; }
+.studio-restart:hover { color: var(--color-error); background: color-mix(in oklab, var(--color-error) 10%, transparent); }
 
 .studio-menu-trigger {
   display: inline-flex;

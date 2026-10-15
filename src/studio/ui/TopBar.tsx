@@ -4,7 +4,8 @@ import { addFiles, pickFiles, useDialogs } from '../actions'
 import { BrandMark } from '../../components/ui/ModuleIcon'
 import { SidebarReopen } from '../../components/AppSidebar'
 import { ThemeController } from '../../components/ui/ThemeController'
-import { IconDownload, IconFilePlus, IconGrid, IconPlus, IconX } from '../../components/ui/icons'
+import { IconDownload, IconFilePlus, IconGrid, IconPlus, IconTrash, IconX } from '../../components/ui/icons'
+import { Modal } from './Dialogs'
 import { clearCacheAndReload, getRetentionDays, RETENTION_CHOICES, setRetentionDays } from '../../lib/storage'
 import { toast } from '../../components/ui/Toast'
 import {
@@ -142,6 +143,45 @@ function ZoomControl() {
   )
 }
 
+/** Bouton « Recommencer » : vide l'éditeur (document, pages, annotations) après confirmation. */
+function RestartButton() {
+  const closeDocument = useStudio((s) => s.closeDocument)
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <>
+      <button
+        className="studio-restart"
+        title="Tout effacer et repartir d’un éditeur vide"
+        onClick={() => setConfirming(true)}
+      >
+        <IconTrash /> Recommencer
+      </button>
+      <Modal
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title="Tout effacer et recommencer ?"
+        actions={
+          <>
+            <button className="btn btn-ghost rounded-full" onClick={() => setConfirming(false)}>Annuler</button>
+            <button
+              className="btn btn-error rounded-full"
+              onClick={() => {
+                setConfirming(false)
+                closeDocument()
+              }}
+            >
+              Tout effacer
+            </button>
+          </>
+        }
+      >
+        <p>Toutes les pages et annotations de l’éditeur seront retirées. Pensez à exporter avant si besoin.</p>
+        <p className="text-sm opacity-70 mt-2">Les fichiers d’origine sur votre poste ne sont pas touchés.</p>
+      </Modal>
+    </>
+  )
+}
+
 export function TopBar() {
   const name = useStudio((s) => s.name)
   const setName = useStudio((s) => s.setName)
@@ -168,6 +208,7 @@ export function TopBar() {
           <input value={name} aria-label="Nom du document" onChange={(e) => setName(e.target.value)} spellCheck={false} />
           <nav className="studio-menubar">
             <FileMenu />
+            <RestartButton />
           </nav>
         </div>
       </div>

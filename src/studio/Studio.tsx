@@ -187,6 +187,35 @@ const SHORTCUTS: [string, string][] = [
   ...ALL_TOOLS.map((t): [string, string] => [t.key, t.label]),
 ]
 
+/** Au démarrage : reprendre le travail laissé dans ce navigateur, ou repartir de zéro. */
+function ResumeDialog() {
+  const pending = useStudio((s) => s.pendingResume)
+  const resumeSession = useStudio((s) => s.resumeSession)
+  const discardSession = useStudio((s) => s.discardSession)
+  const count = pending?.pages.length ?? 0
+  return (
+    <Modal
+      open={!!pending}
+      onClose={resumeSession}
+      title="Reprendre l’édition en cours ?"
+      actions={
+        <>
+          <button className="btn btn-ghost rounded-full" onClick={discardSession}>Non, repartir de zéro</button>
+          <button className="btn btn-primary rounded-full" onClick={resumeSession}>Oui, reprendre</button>
+        </>
+      }
+    >
+      <p>
+        Un document est resté ouvert lors de votre dernière visite :{' '}
+        <strong>{pending?.name ?? 'document'}</strong> ({count} page{count > 1 ? 's' : ''}).
+      </p>
+      <p className="text-sm opacity-70 mt-2">
+        « Repartir de zéro » vide l’éditeur. Les fichiers d’origine sur votre poste ne sont pas touchés.
+      </p>
+    </Modal>
+  )
+}
+
 export default function Studio() {
   const hydrated = useStudio((s) => s.hydrated)
   const hydrate = useStudio((s) => s.hydrate)
@@ -264,6 +293,7 @@ export default function Studio() {
         </div>
       )}
 
+      <ResumeDialog />
       <ExportDialog open={dialog === 'export'} onClose={() => openDialog(null)} />
       <NewDocDialog open={dialog === 'new'} onClose={() => openDialog(null)} />
       <AddPagesDialog open={dialog === 'add-pages'} onClose={() => openDialog(null)} />
