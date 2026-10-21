@@ -15,7 +15,8 @@ export function Modal({
   title: string
   children: ReactNode
   actions?: ReactNode
-  wide?: boolean
+  /** true = large ; 'xl' = aperçus d'image. */
+  wide?: boolean | 'xl'
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -26,7 +27,7 @@ export function Modal({
   }, [open])
   return (
     <dialog ref={ref} className="modal" onClose={onClose} onCancel={onClose}>
-      <div className={`modal-box studio-modal ${wide ? 'max-w-2xl' : 'max-w-lg'}`}>
+      <div className={`modal-box studio-modal ${wide === 'xl' ? 'max-w-5xl' : wide ? 'max-w-2xl' : 'max-w-lg'}`}>
         <h3 className="font-semibold text-lg mb-4">{title}</h3>
         {children}
         {actions && <div className="modal-action">{actions}</div>}

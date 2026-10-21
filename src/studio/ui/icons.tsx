@@ -78,3 +78,6 @@ export const IconCallout = () => (
 export const IconTextSelect = () => (
   <svg {...base}><path d="M5 4h4M7 4v16M5 20h4" /><rect x="12" y="7" width="9" height="4" rx="1" /><path d="M12 15h9M12 19h6" /></svg>
 )
+export const IconReceipt = () => (
+  <svg {...base}><path d="M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21V3Z" /><path d="M9 8h6M9 12h6M9 16h3" /></svg>
+)

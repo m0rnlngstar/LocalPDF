@@ -84,6 +84,8 @@ interface StudioState extends PersistedState {
   duplicatePages: (ids: string[]) => void
   setPageBackground: (id: string, color: string) => void
   setPageOcr: (id: string, ocr: StudioPage['ocr']) => void
+  /** Remplace toute la liste des pages en une étape annulable (traitements d'image…). */
+  replaceAllPages: (pages: StudioPage[], currentPageId?: string) => void
 
   addAnnotation: (pageId: string, ann: Annotation) => void
   updateAnnotation: (pageId: string, id: string, patch: Partial<Annotation>) => void
@@ -364,6 +366,17 @@ export const useStudio = create<StudioState>((set, get) => {
       // L'OCR n'est pas une action « annulable » : on ne l'inscrit pas dans l'historique
       set({ pages: mapPage(id, (p) => ({ ...p, ocr })) })
       persist()
+    },
+
+    replaceAllPages: (pages, currentPageId) => {
+      const ids = new Set(pages.map((p) => p.id))
+      const { selectedAnn, selectedPageIds } = get()
+      commit(pages, {
+        selectedPageIds: selectedPageIds.filter((id) => ids.has(id)),
+        selectedAnn: selectedAnn && ids.has(selectedAnn.pageId) ? selectedAnn : null,
+        ...(currentPageId ? { currentPageId } : {}),
+      })
+      if (currentPageId) get().scrollToPage(currentPageId)
     },
 
     addAnnotation: (pageId, ann) => {

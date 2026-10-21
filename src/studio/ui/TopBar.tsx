@@ -9,7 +9,7 @@ import { Modal } from './Dialogs'
 import { clearCacheAndReload, getRetentionDays, RETENTION_CHOICES, setRetentionDays } from '../../lib/storage'
 import { toast } from '../../components/ui/Toast'
 import {
-  IconBook, IconComments, IconFolderOpen, IconMaximize, IconRedo, IconScanText, IconSearch, IconSidebar,
+  IconBook, IconComments, IconFolderOpen, IconReceipt, IconWand, IconMaximize, IconRedo, IconScanText, IconSearch, IconSidebar,
   IconUndo, IconZoomIn, IconZoomOut,
 } from './icons'
 import { PT_TO_PX } from './Viewer'
@@ -86,6 +86,25 @@ export function FileMenu() {
         </li>
         <MenuItem onClick={() => openDialog('shortcuts')}>Raccourcis clavier</MenuItem>
         <li><a href="mailto:h.dupuis@co-pilotes.com?subject=LocalPDF%20%E2%80%93%20signalement%20de%20bug" onClick={closeMenus}>Signaler un bug…</a></li>
+      </ul>
+    </div>
+  )
+}
+
+/** Menu « Image » : traitements locaux des pages scannées ou photographiées. */
+function ImageMenu() {
+  const hasPages = useStudio((s) => s.pages.length > 0)
+  const openDialog = useDialogs((s) => s.open)
+  return (
+    <div className="dropdown">
+      <button tabIndex={0} className="studio-menu-trigger">Image</button>
+      <ul tabIndex={0} className="dropdown-content menu studio-menu z-50">
+        <MenuItem disabled={!hasPages} onClick={() => openDialog('enhance')}>
+          <IconWand /> Améliorer la lisibilité (netteté, contraste)…
+        </MenuItem>
+        <MenuItem disabled={!hasPages} onClick={() => openDialog('receipts')}>
+          <IconReceipt /> Isoler les tickets de la page…
+        </MenuItem>
       </ul>
     </div>
   )
@@ -208,6 +227,7 @@ export function TopBar() {
           <input value={name} aria-label="Nom du document" onChange={(e) => setName(e.target.value)} spellCheck={false} />
           <nav className="studio-menubar">
             <FileMenu />
+            <ImageMenu />
             <RestartButton />
           </nav>
         </div>

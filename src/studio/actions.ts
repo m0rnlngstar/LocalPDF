@@ -94,7 +94,7 @@ export async function sendDocumentToTool(id: ModuleId) {
 
 /** Boîtes de dialogue de l'éditeur (ouvrables depuis le menu ou un raccourci). */
 interface DialogState {
-  dialog: 'export' | 'new' | 'shortcuts' | 'add-pages' | null
+  dialog: 'export' | 'new' | 'shortcuts' | 'add-pages' | 'enhance' | 'receipts' | null
   /** Position d'insertion proposée par défaut dans « Ajouter des pages ». */
   addAt: number | null
   open: (d: DialogState['dialog']) => void

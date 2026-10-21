@@ -3,44 +3,7 @@ import {
   type LiveDocumentAnalysis,
   type ScanGuidePoint,
 } from './liveDocumentDetection'
-
-type OpenCvRuntime = typeof import('@techstark/opencv-js')
-
-interface OpenCvModuleShape {
-  default?: unknown
-  Mat?: unknown
-  onRuntimeInitialized?: () => void
-}
-
-let runtimePromise: Promise<OpenCvRuntime> | null = null
-
-function hasOpenCvRuntime(value: unknown): value is OpenCvRuntime {
-  return Boolean(value && typeof value === 'object' && 'Mat' in value && 'findContours' in value)
-}
-
-async function initializeOpenCv(): Promise<OpenCvRuntime> {
-  const imported = await import('@techstark/opencv-js')
-  const moduleShape = imported as OpenCvModuleShape
-  const candidate = await Promise.resolve(moduleShape.default ?? imported)
-  if (hasOpenCvRuntime(candidate)) return candidate
-
-  const pending = candidate as OpenCvModuleShape
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error("OpenCV n'a pas pu démarrer")), 20_000)
-    const previous = pending.onRuntimeInitialized
-    pending.onRuntimeInitialized = () => {
-      previous?.()
-      window.clearTimeout(timeout)
-      if (hasOpenCvRuntime(pending)) resolve(pending)
-      else reject(new Error('Runtime OpenCV incomplet'))
-    }
-  })
-}
-
-function getOpenCvRuntime() {
-  runtimePromise ??= initializeOpenCv()
-  return runtimePromise
-}
+import { getOpenCvRuntime, type OpenCvRuntime } from '../../lib/opencv'
 
 function orderCorners(points: ScanGuidePoint[]) {
   if (points.length !== 4) return null

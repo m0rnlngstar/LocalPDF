@@ -2,7 +2,7 @@ import { useStudio } from '../store'
 import { useDialogs } from '../actions'
 import { PageSorter } from './PageSorter'
 import { IconCopy, IconDownload, IconPlus, IconRotate, IconTrash } from '../../components/ui/icons'
-import { IconRotateLeft } from './icons'
+import { IconReceipt, IconRotateLeft, IconWand } from './icons'
 
 /** Vue « Pages » : grille de toutes les pages, sélection multiple, actions groupées. */
 export function Organizer() {
@@ -31,6 +31,18 @@ export function Organizer() {
         <button className="btn btn-xs rounded-full gap-1" disabled={!n} onClick={() => duplicatePages(selected)}><IconCopy /> Dupliquer</button>
         <button className="btn btn-xs rounded-full gap-1 btn-error btn-soft" disabled={!n || n === pages.length} onClick={() => deletePages(selected)}><IconTrash /> Supprimer</button>
         <button className="btn btn-xs rounded-full gap-1" disabled={!n} onClick={() => openDialog('export')}><IconDownload /> Extraire</button>
+        <button className="btn btn-xs rounded-full gap-1" disabled={!pages.length} title="Netteté, contraste, fond blanchi" onClick={() => openDialog('enhance')}><IconWand /> Améliorer</button>
+        <button
+          className="btn btn-xs rounded-full gap-1"
+          disabled={n > 1 || !pages.length}
+          title="Une page par ticket, à partir de la page sélectionnée (ou courante)"
+          onClick={() => {
+            if (n === 1) useStudio.getState().setCurrentPage(selected[0])
+            openDialog('receipts')
+          }}
+        >
+          <IconReceipt /> Isoler les tickets
+        </button>
         <span className="studio-sep" />
         <button className="btn btn-xs btn-primary rounded-full gap-1" onClick={() => openAddPages()}><IconPlus /> Ajouter des pages</button>
       </div>

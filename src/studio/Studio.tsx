@@ -9,6 +9,7 @@ import { RightPanel } from './ui/RightPanel'
 import { StartScreen } from './ui/StartScreen'
 import { ExportDialog, Modal, NewDocDialog } from './ui/Dialogs'
 import { AddPagesDialog } from './ui/AddPagesDialog'
+import { EnhanceDialog, ReceiptsDialog } from './ui/ImageDialogs'
 import { BrandMark } from '../components/ui/ModuleIcon'
 import { SidebarReopen } from '../components/AppSidebar'
 import { ThemeController } from '../components/ui/ThemeController'
@@ -297,6 +298,8 @@ export default function Studio() {
       <ExportDialog open={dialog === 'export'} onClose={() => openDialog(null)} />
       <NewDocDialog open={dialog === 'new'} onClose={() => openDialog(null)} />
       <AddPagesDialog open={dialog === 'add-pages'} onClose={() => openDialog(null)} />
+      <EnhanceDialog open={dialog === 'enhance'} onClose={() => openDialog(null)} />
+      <ReceiptsDialog open={dialog === 'receipts'} onClose={() => openDialog(null)} />
       <Modal open={dialog === 'shortcuts'} onClose={() => openDialog(null)} title="Raccourcis clavier" wide>
         <table className="table table-sm">
           <tbody>
