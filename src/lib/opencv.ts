@@ -19,9 +19,9 @@ function hasOpenCvRuntime(value: unknown): value is OpenCvRuntime {
 }
 
 async function initializeOpenCv(): Promise<OpenCvRuntime> {
-  const imported = await import('@techstark/opencv-js')
-  const moduleShape = imported as OpenCvModuleShape
-  const candidate = await Promise.resolve(moduleShape.default ?? imported)
+  const { openCvExport } = await import('./opencvModule')
+  const exported = openCvExport().value as OpenCvModuleShape
+  const candidate = await Promise.resolve(exported.default ?? exported)
   if (hasOpenCvRuntime(candidate)) return candidate
 
   const pending = candidate as OpenCvModuleShape

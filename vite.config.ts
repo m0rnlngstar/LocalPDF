@@ -9,11 +9,13 @@ import tailwindcss from '@tailwindcss/vite'
  * (pas en développement, où Vite injecte des scripts en ligne).
  * - aucune connexion vers un autre domaine : un document piégé ne peut rien
  *   exfiltrer, même en cas de faille d'affichage ;
- * - 'wasm-unsafe-eval' : moteurs WebAssembly locaux (pdf.js, OCR, HEIC, OpenCV).
+ * - 'wasm-unsafe-eval' : moteurs WebAssembly locaux (pdf.js, OCR, HEIC, OpenCV) ;
+ * - 'unsafe-eval' : requis par OpenCV.js, dont les liaisons (embind) génèrent
+ *   leurs fonctions avec new Function. Les scripts restent limités à 'self'.
  */
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
+  "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'",
   "worker-src 'self' blob:",
   "connect-src 'self' data: blob:",
   "img-src 'self' data: blob:",
