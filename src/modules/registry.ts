@@ -9,6 +9,7 @@ const moduleImporters: Record<ModuleId, () => Promise<{ default: React.Component
   scanner: () => import('./scanner/ScannerModule'),
   docchat: () => import('./docchat/DocChatModule'),
   split: () => import('./split/SplitModule'),
+  'table-extract': () => import('./table-extract/TableExtractModule'),
   'smart-split': () => import('./smart-split/SmartSplitModule'),
   'smart-merge': () => import('./smart-merge/SmartMergeModule'),
   facturx: () => import('./facturx/FacturXModule'),

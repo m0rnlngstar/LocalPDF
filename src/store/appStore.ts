@@ -8,7 +8,7 @@ import { AI_ENABLED } from '../lib/features'
  */
 export type ModuleId =
   | 'convert' | 'merge' | 'compress'
-  | 'scanner' | 'split' | 'smart-split' | 'smart-merge' | 'facturx' | 'docchat'
+  | 'scanner' | 'split' | 'table-extract' | 'smart-split' | 'smart-merge' | 'facturx' | 'docchat'
 
 export type ModuleTone = 'violet' | 'blue' | 'cyan' | 'emerald' | 'amber' | 'rose'
 
@@ -44,6 +44,10 @@ const ALL_MODULES: ModuleMeta[] = [
   {
     id: 'split', label: 'Isoler des tickets', tone: 'emerald', acceptsDocument: true,
     desc: 'Découpez plusieurs tickets ou reçus présents sur une même feuille.',
+  },
+  {
+    id: 'table-extract', label: 'Extraire un tableau', tone: 'emerald', badge: 'Excel', acceptsDocument: true,
+    desc: 'Tracez un cadre autour d’un tableau (relevé, grand livre, facture) et récupérez-le dans Excel, sans le reste de la page.',
   },
   {
     id: 'smart-split', label: 'Découpage intelligent', tone: 'violet', badge: 'IA locale', acceptsDocument: true,

@@ -63,6 +63,12 @@ const paths: Record<string, React.ReactNode> = {
       <path d="M9 17.5 12 15l3 2.5" />
     </>
   ),
+  'table-extract': (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9.5h18M3 14.5h18M9 4v16M15 9.5V20" />
+    </>
+  ),
   'smart-split': (
     <>
       <path d="M9.5 4.5A3.5 3.5 0 0 0 6 8v.5a3.5 3.5 0 0 0 0 7V16a3.5 3.5 0 0 0 3.5 3.5" />
