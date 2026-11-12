@@ -1,5 +1,6 @@
 import { renderPageToCanvas, type PdfJsDocument } from '../../lib/pdfjs'
 import { itemsToWords, type PdfTextItemLike, type TextBox } from '../../lib/tableExtract'
+import { toDarkImage, type DarkImage } from '../../lib/tableRulings'
 
 /** Mots d'une page, dans le repère de la page affichée (points, origine en haut à gauche). */
 export interface PageText {
@@ -54,4 +55,21 @@ export async function ocrPageText(
     height: base.height,
     source: 'ocr',
   }
+}
+
+/** Image binarisée d'un canvas de page (pour repérer les traits du tableau). */
+export function canvasToDark(canvas: HTMLCanvasElement): DarkImage {
+  const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height)
+  return toDarkImage(pixels.data, canvas.width, canvas.height)
+}
+
+/** Image binarisée d'une page qui n'a pas encore été affichée. */
+export async function readPageImage(pdf: PdfJsDocument, pageIndex: number): Promise<DarkImage> {
+  const page = await pdf.getPage(pageIndex + 1)
+  const base = page.getViewport({ scale: 1 })
+  const canvas = await renderPageToCanvas(pdf, pageIndex + 1, Math.min(2.35, 1400 / base.width))
+  const image = canvasToDark(canvas)
+  canvas.width = 0
+  canvas.height = 0
+  return image
 }

@@ -11,7 +11,7 @@ import { takeHandoff } from '../../studio/handoff'
 import { openProtected, PasswordRequiredError } from '../../studio/passwords'
 import type { PdfJsDocument } from '../../lib/pdfjs'
 import { downloadBytes } from '../../lib/pdfExport'
-import { extractTable, findSuspectCells, parseCell, toTsv, type TableGrid } from '../../lib/tableExtract'
+import { extractTable, findSuspectCells, toTsv, typeGrid, type TableGrid } from '../../lib/tableExtract'
 import { buildXlsx, type XlsxCell, type XlsxSheet } from '../../lib/xlsxWriter'
 import { FileDropzone } from '../../components/ui/FileDropzone'
 import { toast } from '../../components/ui/Toast'
@@ -25,7 +25,8 @@ import {
   IconTrash,
   IconX,
 } from '../../components/ui/icons'
-import { ocrPageText, readPageText, type PageText } from './pageText'
+import { findVerticalRulings, type DarkImage } from '../../lib/tableRulings'
+import { canvasToDark, ocrPageText, readPageImage, readPageText, type PageText } from './pageText'
 
 /**
  * Extraction de tableaux vers Excel : on trace un cadre autour du tableau (et
@@ -45,6 +46,8 @@ interface Zone {
   height: number
   /** Séparations de colonnes imposées (fraction de la largeur de page) ; null = automatique. */
   separators: number[] | null
+  /** Parmi les séparations imposées, celles qui suivent un trait vertical du tableau. */
+  rules: number[]
 }
 
 type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw'
@@ -82,13 +85,33 @@ interface Options {
   singleSheet: boolean
   dropRepeatedHeaders: boolean
   highlight: boolean
+  /** Année appliquée aux dates écrites sans année (« 05.10 ») ; vide = laissées en texte. */
+  year: string
+  /** Colonnes d'après les traits verticaux du tableau, quand il en a. */
+  useRulings: boolean
+}
+
+function yearOf(options: Options): number | null {
+  const year = Number(options.year)
+  return Number.isInteger(year) && year >= 1990 && year <= 2100 ? year : null
 }
 
 function clamp(value: number, minimum = 0, maximum = 1) {
   return Math.min(maximum, Math.max(minimum, value))
 }
 
-function zoneGrid(zone: Zone, text: PageText, options: Options): TableGrid {
+function zoneGrid(zone: Zone, text: PageText, options: Options, image?: DarkImage): TableGrid {
+  // Traits verticaux de l'image, ramenés aux unités de la page
+  const rulings = zone.separators
+    ? zone.rules.map((x) => x * text.width)
+    : image && options.useRulings
+      ? findVerticalRulings(image, {
+          x0: zone.x * image.width,
+          y0: zone.y * image.height,
+          x1: (zone.x + zone.width) * image.width,
+          y1: (zone.y + zone.height) * image.height,
+        }).map((x) => (x / image.width) * text.width)
+      : null
   return extractTable(
     text.words,
     {
@@ -102,6 +125,7 @@ function zoneGrid(zone: Zone, text: PageText, options: Options): TableGrid {
       gapEm: GAP_EM[options.sensitivity],
       mergeContinuations: options.mergeContinuations,
       tightBoxes: text.source === 'ocr',
+      rulings,
     }
   )
 }
@@ -116,13 +140,14 @@ function columnLetter(index: number): string {
 
 /** Cellules Excel typées (nombres, dates) ; les cellules douteuses sont surlignées. */
 function toSheetRows(rows: string[][], options: Options): XlsxCell[][] {
-  const flags = findSuspectCells(rows)
+  const typed = typeGrid(rows, { year: yearOf(options) })
+  const flags = findSuspectCells(rows, typed)
   return rows.map((row, r) =>
     row.map((cell, c): XlsxCell => {
       const text = cell.trim()
       if (!text) return null
       if (!options.convert) return text
-      const value = parseCell(text)
+      const value = typed[r][c]
       if (value.kind === 'number') {
         return { v: value.value, s: value.percent ? 'percent' : value.decimals === 2 ? 'amount' : 'general' }
       }
@@ -142,24 +167,31 @@ export default function TableExtractModule() {
   const [zones, setZones] = useState<Zone[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [texts, setTexts] = useState<Record<number, PageText>>({})
+  /** Images binarisées des pages, pour repérer les traits verticaux des tableaux. */
+  const [images, setImages] = useState<Record<number, DarkImage>>({})
   const [ocr, setOcr] = useState<{ page: number; progress: number } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [options, setOptions] = useState<Options>({
     sensitivity: 'normal',
     convert: true,
     mergeContinuations: false,
+    useRulings: true,
     singleSheet: true,
     dropRepeatedHeaders: true,
     highlight: true,
+    year: '',
   })
 
   const pageCanvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<Interaction | null>(null)
   const zonesRef = useRef(zones)
   const textsRef = useRef(texts)
+  const imagesRef = useRef(images)
   const docRef = useRef<LoadedDoc | null>(null)
   /** Séparations affichées de la zone sélectionnée (fractions de page). */
   const separatorsRef = useRef<number[]>([])
+  /** Parmi elles, celles qui suivent un trait du tableau. */
+  const rulesRef = useRef<number[]>([])
   // pdf.js : les opérations sur un même document sont sérialisées (rendus
   // concurrents = glyphes perdus).
   const queueRef = useRef<Promise<unknown>>(Promise.resolve())
@@ -178,6 +210,11 @@ export default function TableExtractModule() {
   const storeText = useCallback((page: number, text: PageText) => {
     textsRef.current = { ...textsRef.current, [page]: text }
     setTexts(textsRef.current)
+  }, [])
+
+  const storeImage = useCallback((page: number, image: DarkImage) => {
+    imagesRef.current = { ...imagesRef.current, [page]: image }
+    setImages(imagesRef.current)
   }, [])
 
   // Document transmis par l'éditeur
@@ -201,6 +238,8 @@ export default function TableExtractModule() {
       docRef.current = loaded
       textsRef.current = {}
       setTexts({})
+      imagesRef.current = {}
+      setImages({})
       commitZones([])
       setSelectedId(null)
       setPageIndex(0)
@@ -266,6 +305,8 @@ export default function TableExtractModule() {
       canvas.width = Math.ceil(viewport.width)
       canvas.height = Math.ceil(viewport.height)
       await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
+      // Le même rendu sert à repérer les traits verticaux du tableau
+      if (!imagesRef.current[pageIndex]) storeImage(pageIndex, canvasToDark(canvas))
       return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
     })
       .then((blob) => {
@@ -284,7 +325,7 @@ export default function TableExtractModule() {
       active = false
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [doc, pageIndex, enqueue])
+  }, [doc, pageIndex, enqueue, storeImage])
 
   /** Couche texte d'une page, lue une seule fois. */
   const ensureText = useCallback(
@@ -313,11 +354,19 @@ export default function TableExtractModule() {
   const selectedZone = zones.find((zone) => zone.id === selectedId) ?? null
   const selectedText = selectedZone ? texts[selectedZone.page] : undefined
 
+  const selectedImage = selectedZone ? images[selectedZone.page] : undefined
   const selectedGrid = useMemo(
-    () => (selectedZone && selectedText ? zoneGrid(selectedZone, selectedText, options) : null),
-    [selectedZone, selectedText, options]
+    () => (selectedZone && selectedText ? zoneGrid(selectedZone, selectedText, options, selectedImage) : null),
+    [selectedZone, selectedText, options, selectedImage]
   )
-  const selectedFlags = useMemo(() => (selectedGrid ? findSuspectCells(selectedGrid.rows) : []), [selectedGrid])
+  const selectedTyped = useMemo(
+    () => (selectedGrid ? typeGrid(selectedGrid.rows, { year: yearOf(options) }) : []),
+    [selectedGrid, options]
+  )
+  const selectedFlags = useMemo(
+    () => (selectedGrid ? findSuspectCells(selectedGrid.rows, selectedTyped) : []),
+    [selectedGrid, selectedTyped]
+  )
   const suspectCount = useMemo(() => selectedFlags.flat().filter(Boolean).length, [selectedFlags])
 
   const selectedSeparators = useMemo(
@@ -326,7 +375,8 @@ export default function TableExtractModule() {
   )
   useEffect(() => {
     separatorsRef.current = selectedSeparators
-  }, [selectedSeparators])
+    rulesRef.current = selectedGrid && selectedText ? selectedGrid.rulings.map((s) => s / selectedText.width) : []
+  }, [selectedSeparators, selectedGrid, selectedText])
 
   /** Mots repris dans la zone sélectionnée, affichés en surimpression. */
   const capturedWords = useMemo(() => {
@@ -383,6 +433,7 @@ export default function TableExtractModule() {
           y,
           // Les séparations imposées suivent le cadre
           separators: start.separators ? start.separators.map((s) => s + (x - start.x)) : null,
+          rules: start.rules.map((s) => s + (x - start.x)),
         }))
         return
       }
@@ -454,6 +505,7 @@ export default function TableExtractModule() {
       width: 0,
       height: 0,
       separators: null,
+      rules: [],
     }
     commitZones([...zonesRef.current, zone])
     setSelectedId(id)
@@ -481,12 +533,19 @@ export default function TableExtractModule() {
     if (event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
-    const frozen = { ...zone, separators: [...separatorsRef.current] }
+    const frozen = { ...zone, separators: [...separatorsRef.current], rules: zone.separators ? zone.rules : [...rulesRef.current] }
     startInteraction(event, { kind: 'separator', zoneId: zone.id, separatorIndex: index, startZone: frozen })
   }
 
   function setSeparators(zoneId: string, separators: number[] | null) {
-    commitZones(zonesRef.current.map((zone) => (zone.id === zoneId ? { ...zone, separators } : zone)))
+    commitZones(
+      zonesRef.current.map((zone) => {
+        if (zone.id !== zoneId) return zone
+        // Première modification : on fige aussi quels traits du tableau servaient de colonnes
+        const rules = !separators ? [] : zone.separators ? zone.rules : [...rulesRef.current]
+        return { ...zone, separators, rules }
+      })
+    )
   }
 
   function addSeparator(event: ReactMouseEvent, zone: Zone) {
@@ -506,7 +565,7 @@ export default function TableExtractModule() {
 
   function addFullPageZone() {
     const id = crypto.randomUUID()
-    const zone: Zone = { id, group: id, page: pageIndex, x: 0.03, y: 0.03, width: 0.94, height: 0.94, separators: null }
+    const zone: Zone = { id, group: id, page: pageIndex, x: 0.03, y: 0.03, width: 0.94, height: 0.94, separators: null, rules: [] }
     commitZones([...zonesRef.current, zone])
     setSelectedId(id)
   }
@@ -531,6 +590,37 @@ export default function TableExtractModule() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selectedId, deleteZone])
 
+  /** Tableau voisin de la zone sélectionnée dans l'ordre de lecture (si son texte est lu). */
+  const previousZone = useMemo(() => {
+    if (!selectedZone) return null
+    const ordered = [...zones].sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x)
+    const index = ordered.findIndex((zone) => zone.id === selectedZone.id)
+    // Le précédent, sinon le suivant (première page cadrée après les autres)
+    const neighbour = ordered[index - 1] ?? ordered[index + 1]
+    return neighbour && texts[neighbour.page] ? neighbour : null
+  }, [zones, selectedZone, texts])
+
+  /**
+   * Donne à la zone sélectionnée les colonnes du tableau précédent (première
+   * page d'un relevé cadrée à part, par exemple) ; les deux sont figées pour
+   * rester identiques.
+   */
+  function copyPreviousColumns() {
+    if (!selectedZone || !previousZone) return
+    const text = textsRef.current[previousZone.page]
+    if (!text) return
+    const grid = zoneGrid(previousZone, text, options, imagesRef.current[previousZone.page])
+    const columns = previousZone.separators ?? grid.separators.map((s) => s / text.width)
+    const rules = previousZone.separators ? previousZone.rules : grid.rulings.map((s) => s / text.width)
+    commitZones(
+      zonesRef.current.map((zone) =>
+        zone.id === selectedZone.id || zone.id === previousZone.id
+          ? { ...zone, separators: [...columns], rules: [...rules] }
+          : zone
+      )
+    )
+  }
+
   /**
    * Même cadre et mêmes colonnes sur toutes les pages suivantes (relevé ou
    * grand livre sur plusieurs pages). Les colonnes sont figées pour que toutes
@@ -539,12 +629,13 @@ export default function TableExtractModule() {
   function repeatOnNextPages() {
     if (!doc || !selectedZone || !selectedGrid) return
     const frozen = selectedZone.separators ?? [...separatorsRef.current]
+    const rules = selectedZone.separators ? selectedZone.rules : [...rulesRef.current]
     const kept = zonesRef.current
       .filter((zone) => !(zone.group === selectedZone.group && zone.page > selectedZone.page))
-      .map((zone) => (zone.id === selectedZone.id ? { ...zone, separators: frozen } : zone))
+      .map((zone) => (zone.id === selectedZone.id ? { ...zone, separators: frozen, rules } : zone))
     const copies: Zone[] = []
     for (let page = selectedZone.page + 1; page < doc.pageCount; page++) {
-      copies.push({ ...selectedZone, id: crypto.randomUUID(), page, separators: [...frozen] })
+      copies.push({ ...selectedZone, id: crypto.randomUUID(), page, separators: [...frozen], rules: [...rules] })
     }
     commitZones([...kept, ...copies])
     toast.success(`Zone répétée sur ${copies.length} page${copies.length > 1 ? 's' : ''} — vérifiez la dernière`)
@@ -588,8 +679,15 @@ export default function TableExtractModule() {
     const emptyPages = new Set<number>()
     for (const zone of ordered) {
       const text = await ensureText(zone.page)
-      if (!text) continue
-      const grid = zoneGrid(zone, text, options)
+      const loaded = docRef.current
+      if (!text || !loaded) continue
+      // Colonnes automatiques sur une page jamais affichée : il faut son image
+      if (!zone.separators && options.useRulings && !imagesRef.current[zone.page]) {
+        const image = await enqueue(() => readPageImage(loaded.pdf, zone.page))
+        if (docRef.current !== loaded) continue
+        storeImage(zone.page, image)
+      }
+      const grid = zoneGrid(zone, text, options, imagesRef.current[zone.page])
       if (grid.rows.length) tables.push({ zone, rows: grid.rows })
       else emptyPages.add(zone.page + 1)
     }
@@ -649,7 +747,7 @@ export default function TableExtractModule() {
         toast.error('Aucun texte dans les zones tracées — lancez l’OCR sur la page.')
         return
       }
-      await navigator.clipboard.writeText(toTsv(stackRows(tables), options.convert))
+      await navigator.clipboard.writeText(toTsv(stackRows(tables), options.convert, { year: yearOf(options) }))
       toast.success('Tableau copié — collez-le dans Excel')
       warnEmpty(emptyPages)
     } catch (error) {
@@ -905,6 +1003,17 @@ export default function TableExtractModule() {
               <button
                 type="button"
                 className="btn btn-xs"
+                disabled={!previousZone}
+                title="Reprend les colonnes du tableau voisin : les pages s'empilent dans les mêmes colonnes Excel"
+                onClick={copyPreviousColumns}
+              >
+                {previousZone
+                  ? `Mêmes colonnes que le tableau ${zones.findIndex((z) => z.id === previousZone.id) + 1}`
+                  : 'Mêmes colonnes qu’un autre tableau'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-xs"
                 disabled={!selectedGrid || selectedZone.page >= doc.pageCount - 1}
                 title="Même cadre et mêmes colonnes sur toutes les pages suivantes"
                 onClick={repeatOnNextPages}
@@ -933,6 +1042,19 @@ export default function TableExtractModule() {
                 onChange={(event) => setOption('convert', event.target.checked)} />
               <span>Convertir montants et dates (1 234,56 → nombre)</span>
             </label>
+            <label className="tx-field">
+              <span>Année des dates sans année (05.10 → 05/10/année)</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                className="input input-xs"
+                placeholder="vide : laissées en texte"
+                value={options.year}
+                disabled={!options.convert}
+                onChange={(event) => setOption('year', event.target.value.replace(/\D/g, ''))}
+              />
+            </label>
             <label className="tx-check">
               <input type="checkbox" className="checkbox checkbox-xs" checked={options.highlight}
                 disabled={!options.convert}
@@ -943,6 +1065,11 @@ export default function TableExtractModule() {
               <input type="checkbox" className="checkbox checkbox-xs" checked={options.mergeContinuations}
                 onChange={(event) => setOption('mergeContinuations', event.target.checked)} />
               <span>Rattacher les libellés sur deux lignes</span>
+            </label>
+            <label className="tx-check">
+              <input type="checkbox" className="checkbox checkbox-xs" checked={options.useRulings}
+                onChange={(event) => setOption('useRulings', event.target.checked)} />
+              <span>S’appuyer sur les traits verticaux du tableau</span>
             </label>
             <label className="tx-check">
               <input type="checkbox" className="checkbox checkbox-xs" checked={options.singleSheet}
@@ -1015,7 +1142,7 @@ export default function TableExtractModule() {
                   <tr key={r}>
                     <th>{r + 1}</th>
                     {row.map((cell, c) => {
-                      const typed = options.convert && parseCell(cell).kind !== 'text'
+                      const typed = options.convert && selectedTyped[r]?.[c]?.kind !== 'text'
                       const suspect = options.convert && selectedFlags[r]?.[c]
                       return (
                         <td

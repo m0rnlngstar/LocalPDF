@@ -45,12 +45,21 @@ export interface TableOptions {
    * fois la taille des caractères, les écarts sont mesurés en conséquence.
    */
   tightBoxes?: boolean
+  /**
+   * Traits verticaux du tableau repérés dans l'image de la page (unités de page).
+   * À partir de deux traits dans la zone, ils définissent les colonnes à la place
+   * des espaces entre les textes. Avec des séparations imposées, indique lesquelles
+   * suivent un trait (un texte sans montant ne déborde pas par-dessus).
+   */
+  rulings?: number[] | null
 }
 
 export interface TableGrid {
   rows: string[][]
   /** Séparations effectivement utilisées (unités de page), triées. */
   separators: number[]
+  /** Parmi les séparations, celles qui suivent un trait vertical du tableau. */
+  rulings: number[]
   /** Nombre de mots trouvés dans la zone. */
   wordCount: number
 }
@@ -187,8 +196,23 @@ function groupRows(words: TextBox[], lineHeight: number, skew: number): Row[] {
       rows.push({ y, words: [w] })
     }
   }
-  for (const row of rows) row.words.sort((a, b) => a.x0 - b.x0)
-  return rows
+  // Morceau de ligne décalé vers le bas ou le haut (bloc OCR mal cadré, montant
+  // centré en face d'un libellé sur deux lignes) : deux rangées très proches
+  // dont les textes ne se chevauchent pas horizontalement n'en font qu'une.
+  const merged: Row[] = []
+  for (const row of rows) {
+    const last = merged[merged.length - 1]
+    const disjoint =
+      !!last && row.words.every((a) => last.words.every((b) => a.x1 <= b.x0 + 1 || a.x0 >= b.x1 - 1))
+    if (last && row.y - last.y < lineHeight * 0.8 && disjoint) {
+      if (row.words.length > last.words.length) last.y = row.y
+      last.words.push(...row.words)
+    } else {
+      merged.push(row)
+    }
+  }
+  for (const row of merged) row.words.sort((a, b) => a.x0 - b.x0)
+  return merged
 }
 
 interface Segment {
@@ -196,31 +220,40 @@ interface Segment {
   x1: number
 }
 
-/** Regroupe les mots d'une ligne séparés par une simple espace. */
-function rowSegments(row: Row, maxGap: number): Segment[] {
+const NUMBER_HEAD = /^[-+(]?\d{1,3}$/
+const NUMBER_NEXT = /^\d{3}(?:[.,]\d+)?[-)%€]*$/
+
+/**
+ * « 1 200,00 » : deux mots qui forment un seul nombre. L'espace des milliers,
+ * large sur une couche OCR, ne doit jamais passer pour une séparation.
+ */
+function isNumberGroup(previous: TextBox, next: TextBox, numberGap: number): boolean {
+  return next.x0 - previous.x1 < numberGap && NUMBER_HEAD.test(previous.text) && NUMBER_NEXT.test(next.text)
+}
+
+/** Regroupe les mots d'une ligne séparés par moins de `maxGap`. */
+function rowSegments(row: Row, maxGap: number, numberGap: number): Segment[] {
   const segments: Segment[] = []
-  let previous = ''
+  let previous: TextBox | null = null
   for (const w of row.words) {
     const last = segments[segments.length - 1]
-    // « 1 200,00 » : l'espace des milliers, large sur une couche OCR, ne doit
-    // jamais être pris pour une séparation de colonnes.
-    const thousands = /^[-+(]?\d{1,3}$/.test(previous) && /^\d{3}(?:[.,]\d+)?[-)%€]*$/.test(w.text)
-    if (last && w.x0 - last.x1 < (thousands ? maxGap * 2.2 : maxGap)) last.x1 = Math.max(last.x1, w.x1)
-    else segments.push({ x0: w.x0, x1: w.x1 })
-    previous = w.text
+    if (last && previous && (w.x0 - last.x1 < maxGap || isNumberGroup(previous, w, numberGap))) {
+      last.x1 = Math.max(last.x1, w.x1)
+    } else {
+      segments.push({ x0: w.x0, x1: w.x1 })
+    }
+    previous = w
   }
   return segments
 }
 
 /**
- * Séparations de colonnes : milieux des couloirs verticaux qu'aucun texte ne
- * traverse. Quelques lignes « traversantes » (titre, total sur toute la
- * largeur) sont tolérées quand le tableau est assez long ; en revanche un texte
- * isolé qui commence ou finit dans un couloir (colonne peu remplie, comme
- * « Crédit » sur un relevé) est bien conservé comme colonne.
+ * Couloirs verticaux libres de texte. Quelques lignes « traversantes » (titre,
+ * total sur toute la largeur) sont tolérées quand le tableau est assez long ;
+ * en revanche un texte isolé qui commence ou finit dans un couloir (colonne peu
+ * remplie, comme « Crédit » sur un relevé) est conservé et découpe le couloir.
  */
-function detectSeparators(rows: Row[], lineHeight: number, gapEm: number): number[] {
-  const segs = rows.map((row) => rowSegments(row, gapEm * lineHeight))
+function findCorridors(segs: Segment[][], minWidth: number): Segment[] {
   const all = segs.flat()
   if (all.length < 2) return []
   let min = Infinity
@@ -240,9 +273,8 @@ function detectSeparators(rows: Row[], lineHeight: number, gapEm: number): numbe
       for (let i = a; i < b; i++) cover[i]++
     }
   }
-  const crossers = rows.length < 6 ? 0 : rows.length < 20 ? 1 : rows.length < 50 ? 2 : 3
-  const minGap = Math.max(1, lineHeight * 0.25)
-  const separators: number[] = []
+  const crossers = segs.length < 6 ? 0 : segs.length < 20 ? 1 : segs.length < 50 ? 2 : 3
+  const corridors: Segment[] = []
   let i = 0
   while (i < n) {
     if (cover[i] > crossers) {
@@ -254,7 +286,7 @@ function detectSeparators(rows: Row[], lineHeight: number, gapEm: number): numbe
     const a = min + i * step
     const b = min + j * step
     // Textes présents dans le couloir : seuls ceux qui le traversent de part en
-    // part sont ignorés, les autres découpent le couloir.
+    // part sont ignorés, les autres le découpent.
     let pieces: Segment[] = [{ x0: a, x1: b }]
     for (const s of all) {
       if (s.x1 <= a || s.x0 >= b) continue
@@ -273,43 +305,174 @@ function detectSeparators(rows: Row[], lineHeight: number, gapEm: number): numbe
     for (const p of pieces) {
       // Les marges à gauche et à droite du contenu ne sont pas des colonnes
       if (p.x0 <= min + step || p.x1 >= max - step) continue
-      if (p.x1 - p.x0 >= minGap) separators.push((p.x0 + p.x1) / 2)
+      if (p.x1 - p.x0 >= minWidth) corridors.push(p)
     }
     i = j
   }
+  return corridors
+}
+
+const DATE_TOKEN = /^\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?$/
+
+/**
+ * Dates en tête de ligne (« date », puis souvent « date de valeur ») : sur une
+ * couche OCR écrite ligne par ligne, la position des mots n'est qu'estimée et
+ * les couloirs ne ressortent pas. On s'appuie alors sur le contenu : si une
+ * bonne part des lignes commence par une date, puis éventuellement une seconde,
+ * chacune forme une colonne.
+ */
+function leadingDateSeparators(rows: Row[], em: number, existing: number[]): number[] {
+  const starts = rows.filter((row) => row.words.length >= 2 && DATE_TOKEN.test(row.words[0].text))
+  if (starts.length < Math.max(3, rows.length * 0.25)) return []
+  const left = median(starts.map((row) => row.words[0].x0))
+  let group = starts.filter((row) => Math.abs(row.words[0].x0 - left) < em)
+  const base = group.length
+  const found: number[] = []
+  for (let k = 0; k < 2; k++) {
+    group = group.filter((row) => row.words.length > k + 1 && DATE_TOKEN.test(row.words[k].text))
+    if (group.length < Math.max(3, base * 0.6)) break
+    const dateCenter = median(group.map((row) => (row.words[k].x0 + row.words[k].x1) / 2))
+    const nextStart = median(group.map((row) => row.words[k + 1].x0))
+    // Déjà séparée par un couloir : rien à ajouter
+    if (existing.some((s) => s > dateCenter && s < nextStart + em * 0.3)) continue
+    found.push(median(group.map((row) => (row.words[k].x1 + row.words[k + 1].x0) / 2)))
+  }
+  return found
+}
+
+/**
+ * Séparations de colonnes : couloirs laissés libres par le texte (au moins
+ * `gapEm` entre deux textes d'une même ligne), complétés par les dates de début
+ * de ligne quand la couche texte les colle au libellé.
+ */
+function detectSeparators(rows: Row[], em: number, gapEm: number): number[] {
+  const numberGap = Math.max(2.2 * gapEm, 0.8) * em
+  const wide = findCorridors(
+    rows.map((row) => rowSegments(row, gapEm * em, numberGap)),
+    Math.max(1, em * 0.25)
+  )
+  const separators = wide.map((p) => (p.x0 + p.x1) / 2)
+  separators.push(...leadingDateSeparators(rows, em, separators))
   return separators.sort((x, y) => x - y)
 }
+
+/**
+ * Glyphes parasites d'une couche OCR : case à cocher de pointage lue « ¨ »,
+ * filet de tableau lu « | »… Un mot fait uniquement de ces signes est ignoré.
+ */
+const NOISE_WORD = /^[¨□☐☑▢▫◻■▪●○·•|¦_~`´^]+$/
 
 /** Extrait la grille (lignes × colonnes) des mots situés dans `zone`. */
 export function extractTable(words: TextBox[], zone: Rect, options: TableOptions = {}): TableGrid {
   const inside = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2
     const cy = (w.y0 + w.y1) / 2
-    return cx >= zone.x0 && cx <= zone.x1 && cy >= zone.y0 && cy <= zone.y1
+    return cx >= zone.x0 && cx <= zone.x1 && cy >= zone.y0 && cy <= zone.y1 && !NOISE_WORD.test(w.text)
   })
-  if (!inside.length) return { rows: [], separators: [], wordCount: 0 }
+  if (!inside.length) return { rows: [], separators: [], rulings: [], wordCount: 0 }
 
   const lineHeight = (median(inside.map((w) => w.y1 - w.y0)) || 10) * (options.tightBoxes ? 1.35 : 1)
   const skew = estimateSkew(inside, lineHeight)
   const rows = groupRows(inside, lineHeight, skew)
+  const gapEm = options.gapEm ?? 0.5
 
+  const inZone = (list: number[]) => list.filter((x) => x > zone.x0 && x < zone.x1).sort((a, b) => a - b)
+  const rulings = inZone(options.rulings ?? [])
+  const isRuling = (x: number) => rulings.some((r) => Math.abs(r - x) < 0.05)
+  // Tableau à filets : les traits font les colonnes ; seules les dates de début
+  // de ligne, souvent séparées par un simple pointillé, sont cherchées dans le texte.
+  const ruled = !options.separators && rulings.length >= 2
   const separators = options.separators
-    ? [...options.separators].filter((x) => x > zone.x0 && x < zone.x1).sort((a, b) => a - b)
-    : detectSeparators(rows, lineHeight, options.gapEm ?? 0.5)
+    ? inZone(options.separators)
+    : ruled
+      ? [...rulings, ...leadingDateSeparators(rows, lineHeight, rulings)].sort((a, b) => a - b)
+      : detectSeparators(rows, lineHeight, gapEm)
 
-  let grid = rows.map((row) => {
-    const cells: string[][] = Array.from({ length: separators.length + 1 }, () => [])
-    for (const w of row.words) {
-      const cx = (w.x0 + w.x1) / 2
-      let col = 0
-      while (col < separators.length && cx > separators[col]) col++
-      cells[col].push(w.text)
+  const numberGap = Math.max(2.2 * gapEm, 0.8) * lineHeight
+  const columnOf = (limits: number[], x: number) => {
+    let col = 0
+    while (col < limits.length && x > limits[col]) col++
+    return col
+  }
+  const build = (limits: number[]) =>
+    rows.map((row) => {
+      const cells: string[][] = Array.from({ length: limits.length + 1 }, () => [])
+      // Unités insécables : un nombre en plusieurs mots (« 1 234,56 ») est placé
+      // d'un bloc, une séparation qui le frôle ne doit pas envoyer ses milliers
+      // dans la colonne voisine.
+      const atoms: { from: number; to: number }[] = []
+      for (let index = 0; index < row.words.length; ) {
+        let end = index
+        while (end + 1 < row.words.length && isNumberGroup(row.words[end], row.words[end + 1], numberGap)) end++
+        atoms.push({ from: index, to: end })
+        index = end + 1
+      }
+      const text = (atom: { from: number; to: number }) =>
+        row.words.slice(atom.from, atom.to + 1).map((w) => w.text).join(' ')
+      for (let i = 0; i < atoms.length; ) {
+        // Suite de mots séparés par une simple espace
+        let j = i
+        while (j + 1 < atoms.length && row.words[atoms[j + 1].from].x0 - row.words[atoms[j].to].x1 < gapEm * lineHeight) j++
+        const phrase = atoms.slice(i, j + 1)
+        const hasAmount = phrase.some((atom) => {
+          const value = parseCell(text(atom))
+          return value.kind === 'number' && value.decimals > 0
+        })
+        // Tableau à filets : un texte sans montant qui déborde par-dessus un trait
+        // (« Solde au 30.09.26 » calé à droite) ne franchit pas ce trait, au lieu
+        // de laisser un bout de phrase dans la colonne des montants.
+        const start = columnOf(limits, row.words[phrase[0].from].x0 + 0.1)
+        // Les dates de début de ligne, elles, ont chacune leur colonne
+        const startsWithDate = DATE_TOKEN.test(row.words[phrase[0].from].text)
+        for (const atom of phrase) {
+          let col = columnOf(limits, (row.words[atom.from].x0 + row.words[atom.to].x1) / 2)
+          if (rulings.length && !hasAmount && !startsWithDate) {
+            for (let k = start; k < col; k++) {
+              if (isRuling(limits[k])) {
+                col = k
+                break
+              }
+            }
+          }
+          cells[col].push(text(atom))
+        }
+        i = j + 1
+      }
+      return cells.map((parts) => parts.join(' '))
+    })
+
+  let grid = build(separators)
+  if (ruled) {
+    // Bord extérieur du tableau, colonne de cases à cocher : une colonne d'extrémité
+    // entièrement vide n'apporte rien.
+    const empty = (c: number) => grid.every((row) => !row[c].trim())
+    while (separators.length && empty(separators.length)) {
+      separators.pop()
+      grid = build(separators)
     }
-    return cells.map((parts) => parts.join(' '))
-  })
+    while (separators.length && empty(0)) {
+      separators.shift()
+      grid = build(separators)
+    }
+  }
+  if (!options.separators && !ruled) {
+    // Colonne de texte presque vide collée à une colonne de texte : ce n'est pas
+    // une colonne mais quelques lignes décalées (« Solde au 30.09.26 » d'un
+    // relevé). Une colonne de montants peu remplie, elle, est conservée.
+    for (let c = separators.length; c >= 1 && rows.length >= 8; c--) {
+      const cells = grid.map((row) => row[c]).filter((cell) => cell.trim())
+      const left = grid.map((row) => row[c - 1]).filter((cell) => cell.trim())
+      const isText = (cell: string) => parseCell(cell).kind === 'text'
+      const sparse = cells.length > 0 && cells.length <= Math.max(3, rows.length * 0.15)
+      if (sparse && cells.every(isText) && left.filter(isText).length > left.length * 0.6) {
+        separators.splice(c - 1, 1)
+        grid = build(separators)
+      }
+    }
+  }
 
   if (options.mergeContinuations) grid = mergeContinuationRows(grid)
-  return { rows: grid, separators, wordCount: inside.length }
+  return { rows: grid, separators, rulings: separators.filter(isRuling), wordCount: inside.length }
 }
 
 /**
@@ -458,27 +621,81 @@ export function parseCell(raw: string): CellValue {
   return { kind: 'number', value, decimals: fraction.length, percent }
 }
 
+export interface TypeOptions {
+  /** Année à appliquer aux dates écrites sans année (« 05.10 », « 05/10 ») ; vide = laissées en texte. */
+  year?: number | null
+}
+
+/** Cellule typée ; `shortDate` : date sans année reconnue dans une colonne de dates. */
+export type TypedCell = CellValue & { shortDate?: boolean }
+
+const SHORT_DATE = /^(\d{2})\.(\d{2})$|^(\d{1,2})\/(\d{1,2})$/
+
+function shortDateParts(text: string): { day: number; month: number } | null {
+  const m = SHORT_DATE.exec(text.trim())
+  if (!m) return null
+  const day = Number(m[1] ?? m[3])
+  const month = Number(m[2] ?? m[4])
+  return day >= 1 && day <= 31 && month >= 1 && month <= 12 ? { day, month } : null
+}
+
 /**
- * Cellules à vérifier : texte non convertible dans une colonne majoritairement
- * chiffrée (typiquement un « O » lu à la place d'un « 0 » par l'OCR). La
- * première ligne, souvent un en-tête, n'est pas signalée.
+ * Type toutes les cellules d'une grille. Une colonne où la plupart des valeurs
+ * ont la forme « JJ.MM » ou « JJ/MM » est une colonne de dates sans année (cas
+ * des relevés bancaires) : ses valeurs ne sont surtout pas converties en nombres
+ * (« 05.10 » deviendrait 5,1). Elles restent en texte, ou deviennent de vraies
+ * dates si une année est fournie.
  */
-export function findSuspectCells(rows: string[][]): boolean[][] {
-  const flags = rows.map((row) => row.map(() => false))
+export function typeGrid(rows: string[][], options: TypeOptions = {}): TypedCell[][] {
   const columns = Math.max(0, ...rows.map((r) => r.length))
+  const dateColumn: boolean[] = []
   for (let c = 0; c < columns; c++) {
     let filled = 0
-    let typed = 0
-    for (let r = 1; r < rows.length; r++) {
-      const cell = rows[r][c]?.trim()
+    let short = 0
+    for (const row of rows) {
+      const cell = row[c]?.trim()
       if (!cell) continue
       filled++
-      if (parseCell(cell).kind !== 'text') typed++
+      if (shortDateParts(cell)) short++
     }
-    if (typed < 2 || typed / filled < 0.6) continue
+    dateColumn[c] = short >= 3 && short / filled >= 0.6
+  }
+  return rows.map((row) =>
+    row.map((cell, c): TypedCell => {
+      const parts = dateColumn[c] ? shortDateParts(cell) : null
+      if (!parts) return parseCell(cell)
+      const text = cell.trim()
+      const serial = options.year ? excelSerial(options.year, parts.month, parts.day) : null
+      return serial !== null ? { kind: 'date', serial, text, shortDate: true } : { kind: 'text', text, shortDate: true }
+    })
+  )
+}
+
+/**
+ * Cellules à vérifier : texte non convertible dans une colonne majoritairement
+ * chiffrée ou datée (typiquement un « O » lu à la place d'un « 0 » par l'OCR).
+ * La première ligne, souvent un en-tête, n'est signalée que si elle contient un
+ * chiffre.
+ */
+export function findSuspectCells(rows: string[][], typed: TypedCell[][] = typeGrid(rows)): boolean[][] {
+  const flags = rows.map((row) => row.map(() => false))
+  const columns = Math.max(0, ...rows.map((r) => r.length))
+  const recognised = (r: number, c: number) => {
+    const cell = typed[r]?.[c]
+    return !!cell && (cell.kind !== 'text' || !!cell.shortDate)
+  }
+  for (let c = 0; c < columns; c++) {
+    let filled = 0
+    let ok = 0
+    for (let r = 1; r < rows.length; r++) {
+      if (!rows[r][c]?.trim()) continue
+      filled++
+      if (recognised(r, c)) ok++
+    }
+    if (ok < 2 || ok / filled < 0.6) continue
     for (let r = 0; r < rows.length; r++) {
       const cell = rows[r][c]?.trim()
-      if (!cell || parseCell(cell).kind !== 'text') continue
+      if (!cell || recognised(r, c)) continue
       // Première ligne : un en-tête n'a pas de chiffre, une valeur mal lue en a
       if (r > 0 || /\d/.test(cell)) flags[r][c] = true
     }
@@ -486,21 +703,30 @@ export function findSuspectCells(rows: string[][]): boolean[][] {
   return flags
 }
 
+/** Date Excel (numéro de série) au format JJ/MM/AAAA. */
+function formatSerial(serial: number): string {
+  const d = new Date(Date.UTC(1899, 11, 30) + serial * 86400000)
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `${two(d.getUTCDate())}/${two(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
+}
+
 /**
  * Texte tabulé à coller dans Excel. Les nombres sont écrits avec une virgule
  * décimale ; un texte qui commence comme une formule est neutralisé (le
  * contenu d'un PDF reçu d'un tiers n'est pas de confiance).
  */
-export function toTsv(rows: string[][], convert: boolean): string {
+export function toTsv(rows: string[][], convert: boolean, options: TypeOptions = {}): string {
+  const typed = typeGrid(rows, options)
   return rows
-    .map((row) =>
+    .map((row, r) =>
       row
-        .map((cell) => {
+        .map((cell, c) => {
           const clean = cell.replace(/[\t\r\n]+/g, ' ').trim()
-          const value = parseCell(clean)
+          const value = typed[r][c]
           if (convert && value.kind === 'number' && !value.percent) {
             return String(value.value).replace('.', ',')
           }
+          if (convert && value.kind === 'date' && value.shortDate) return formatSerial(value.serial)
           let out = clean
           if (/^[=@]/.test(out) || (/^[+-]/.test(out) && value.kind === 'text')) out = ` ${out}`
           // Un guillemet ouvrirait un champ multi-lignes au collage dans Excel

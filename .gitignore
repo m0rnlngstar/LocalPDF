@@ -31,3 +31,6 @@ public/pdfjs
 
 # PDF de test déposés à la racine (données clients : ne jamais commiter)
 /*.pdf
+
+# Exemples réels (documents clients : ne jamais commiter)
+/example/
